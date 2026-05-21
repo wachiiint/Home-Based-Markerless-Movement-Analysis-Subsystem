@@ -13,4 +13,8 @@ uv add mediapipe "opencv-python" numpy
 
 ###### 2.demo
 # resource = https://github.com/TitorPs360/mediapipe-pose-estimation-example/blob/main/README.md
+
+# load model 
+wget -O pose_landmarker_full.task https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task
+# run
 uv run example3.py

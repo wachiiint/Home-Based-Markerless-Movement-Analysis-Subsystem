@@ -1,8 +1,9 @@
 import cv2
-import mediapipe as mp
 import numpy as np
-
-mp_pose = mp.solutions.pose
+import time
+import mediapipe as mp
+from mediapipe.tasks import python
+from mediapipe.tasks.python import vision
 
 def draw_stick_figure(image, landmarks):
     h, w, c = image.shape
@@ -10,22 +11,22 @@ def draw_stick_figure(image, landmarks):
     def to_pixel(landmark):
         return (int(landmark.x * w), int(landmark.y * h))
     
-    # Get landmarks
-    nose = landmarks[mp_pose.PoseLandmark.NOSE]
-    left_shoulder = landmarks[mp_pose.PoseLandmark.LEFT_SHOULDER]
-    right_shoulder = landmarks[mp_pose.PoseLandmark.RIGHT_SHOULDER]
-    left_elbow = landmarks[mp_pose.PoseLandmark.LEFT_ELBOW]
-    right_elbow = landmarks[mp_pose.PoseLandmark.RIGHT_ELBOW]
-    left_wrist = landmarks[mp_pose.PoseLandmark.LEFT_WRIST]
-    right_wrist = landmarks[mp_pose.PoseLandmark.RIGHT_WRIST]
-    left_hip = landmarks[mp_pose.PoseLandmark.LEFT_HIP]
-    right_hip = landmarks[mp_pose.PoseLandmark.RIGHT_HIP]
-    left_knee = landmarks[mp_pose.PoseLandmark.LEFT_KNEE]
-    right_knee = landmarks[mp_pose.PoseLandmark.RIGHT_KNEE]
-    left_ankle = landmarks[mp_pose.PoseLandmark.LEFT_ANKLE]
-    right_ankle = landmarks[mp_pose.PoseLandmark.RIGHT_ANKLE]
+    # Modern Tasks API landmark mapping (Indices 0 to 33)
+    nose = landmarks[0]
+    left_shoulder = landmarks[11]
+    right_shoulder = landmarks[12]
+    left_elbow = landmarks[13]
+    right_elbow = landmarks[14]
+    left_wrist = landmarks[15]
+    right_wrist = landmarks[16]
+    left_hip = landmarks[23]
+    right_hip = landmarks[24]
+    left_knee = landmarks[25]
+    right_knee = landmarks[26]
+    left_ankle = landmarks[27]
+    right_ankle = landmarks[28]
 
-    color = (0, 100, 255)  # Orange
+    color = (0, 100, 255)  # Orange (BGR format)
     thickness = 24
 
     # Calculate head size from shoulder width
@@ -69,7 +70,17 @@ def draw_stick_figure(image, landmarks):
 # Read webcam
 cap = cv2.VideoCapture(0)
 
-with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as pose:
+# Configure Modern MediaPipe Task Options
+base_options = python.BaseOptions(model_asset_path='pose_landmarker_full.task')
+options = vision.PoseLandmarkerOptions(
+    base_options=base_options,
+    running_mode=vision.RunningMode.VIDEO,
+    min_pose_detection_confidence=0.5,
+    min_tracking_confidence=0.5
+)
+
+# Start tracking utilizing the context manager
+with vision.PoseLandmarker.create_from_options(options) as landmarker:
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
@@ -78,12 +89,19 @@ with mp_pose.Pose(min_detection_confidence=0.5, min_tracking_confidence=0.5) as 
         h, w, _ = frame.shape
         white_canvas = np.ones((h, w, 3), dtype=np.uint8) * 255  # White background
 
-        image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        results = pose.process(image)
+        # Transform BGR OpenCV frames into MediaPipe Image wrappers
+        rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
 
-        # Draw stick figure on white canvas
+        # Generate a strictly increasing timestamp in milliseconds
+        timestamp_ms = int(time.perf_counter() * 1000)
+        results = landmarker.detect_for_video(mp_image, timestamp_ms)
+
+        # Process results if any body tracking exists
         if results.pose_landmarks:
-            draw_stick_figure(white_canvas, results.pose_landmarks.landmark)
+            # results.pose_landmarks returns a nested list of all tracked humans. 
+            # We grab the first person index [0].
+            draw_stick_figure(white_canvas, results.pose_landmarks[0])
 
         cv2.imshow('Stick Figure', white_canvas)
         
