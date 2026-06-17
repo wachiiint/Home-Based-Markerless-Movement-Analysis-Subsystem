@@ -23,7 +23,7 @@ mode = st.radio("Select Input Source:", ["Live Webcam (Instant Testing)", "Uploa
 # --- ADVANCED TRACKING & FILTER ENGINE ---
 class ClinicalTrackingProcessor:
     """Handles noise filtering and landmark memory retention during temporary occlusion."""
-    def __init__(self, alpha=0.25, max_missing_frames=6):
+    def __init__(self, alpha=0.4, max_missing_frames=6):
         self.alpha = alpha
         self.max_missing_frames = max_missing_frames
         self.history = {} # Stores {'joint_id': (filtered_x, filtered_y)}
@@ -204,5 +204,12 @@ elif mode == "Upload Video File":
         tfile.write(uploaded_file.read())
         
         st.subheader("Processing Video File Feed")
-        with st.spinner("Processing file frame iterations..."):
-            run_processing_loop(tfile.name, is_webcam=False)
+        try:
+            with st.spinner("Processing file frame iterations..."):
+                run_processing_loop(tfile.name, is_webcam=False)
+        finally:
+            import os
+            try:
+                os.remove(tfile.name)
+            except OSError:
+                pass

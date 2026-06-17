@@ -3,7 +3,7 @@ import os
 import shutil
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from datetime import datetime
+from datetime import datetime, timezone
 
 # Import modular custom pipeline components
 from src.analytics import calculate_2d_angle, calculate_symmetry_index
@@ -81,7 +81,7 @@ async def assess_movement(
     payload = {
         "session_id": f"SESS-MOVE-{datetime.now().strftime('%Y')}-X982",
         "patient_id": patient_id,
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "video_metadata": {
             "duration_sec": 12.4, # Derived from processing loop
             "fps": 30,

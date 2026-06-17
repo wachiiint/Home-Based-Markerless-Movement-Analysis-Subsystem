@@ -6,7 +6,7 @@
 
 **ปีการศึกษา:** ภาคฤดูร้อน ปีการศึกษา 2568 (Academic Year 2025-2026)
 
-Please refer to this [link](https://docs.google.com/document/d/1FwNN-6pO3VHI83-pHLqGwRwWsl01FDhgPUOuc7VpYjs/edit?tab=t.hmk1jutsczvc)
+Please refer to this [documentation](https://docs.google.com/document/d/1FwNN-6pO3VHI83-pHLqGwRwWsl01FDhgPUOuc7VpYjs/edit?tab=t.hmk1jutsczvc)
 
 ## project structure
 ```
