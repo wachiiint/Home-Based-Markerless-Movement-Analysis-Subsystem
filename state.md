@@ -11,7 +11,7 @@ This document provides a human-and-AI-readable summary of the current project st
 
 ---
 
-## 📂 Key Source Code Mapping
+## Key Source Code Mapping
 *   **FastAPI Backend Orchestrator:** [pose-detection/main.py](file:///home/wachi/Chula/SummerProject/pose-detection/main.py)
     *   Exposes `POST /api/movement/assess` to ingest clinical videos and output structured biomechanical JSON payloads.
 *   **Streamlit Interactive App:** [pose-detection/streamlit_app.py](file:///home/wachi/Chula/SummerProject/pose-detection/streamlit_app.py)
@@ -24,7 +24,7 @@ This document provides a human-and-AI-readable summary of the current project st
 
 ---
 
-## 📈 Current Implementation Progress
+## Current Implementation Progress
 *   [x] **Layer 1 (Sensing):** Support for webcam streams and local video file uploads.
 *   [x] **Layer 2 (Pose Estimation & Quality Control):** Landmark detection using `pose_landmarker_full.task` with occlusion memory hold.
 *   [x] **Layer 3 (Feature Extraction):** 2D joint angle & symmetry calculations completed.
@@ -50,3 +50,11 @@ This document provides a human-and-AI-readable summary of the current project st
 ## Recent Changes
 *   Resolved a disk storage leak in streamlit_app.py by introducing a try/finally block to remove the uploaded temporary video files after the run_processing_loop completes.
 *   Fixed a Python 3.12 deprecation warning in main.py by replacing the deprecated datetime.utcnow() utility with the timezone-aware datetime.now(timezone.utc) standard.
+*   Refactored streamlit_app.py to use the PoseEstimationPipeline class from src/pipeline.py and the calculate_2d_angle function from src/analytics.py, eliminating duplicate code and model options definitions.
+*   Implemented 3D joint angle calculations in src/analytics.py using vector math on MediaPipe real-world metric coordinates (pose_world_landmarks). Refactored src/pipeline.py and streamlit_app.py to extract, compute, and overlay these 3D angles alongside the 2D projected angles.
+*   Added a live markdown table at the bottom of the Streamlit dashboard viewport to display the real-time metric (x, y, z) world coordinates in meters for all target joint landmarks.
+*   Removed all 2D joint-angle features from streamlit_app.py, retaining only the 3D real-world knee flexion calculations and dashboard overlays.
+*   Added a live diagnostic JSON view in streamlit_app.py displaying the raw properties (x, y, z, visibility, presence) of a single target joint (Left Knee / Index 25) directly from the MediaPipe world landmarks model output.
+*   Removed the left sidebar settings panel (Patient ID, Alpha slider) from streamlit_app.py and repurposed it to display raw metric 3D coordinates (x, y, z, visibility, presence) for all active joints in real-time.
+*   Refactored the streamlit_app.py layout into side-by-side columns and tab groups (Metrics Table, Raw Landmarks Table, and JSON structure) to fit all elements in a single screen without scrolling or zooming.
+*   Fixed a camera warm-up bug in live webcam mode by introducing a retry counter and time delays (up to 3 seconds) for the OpenCV VideoCapture reader.

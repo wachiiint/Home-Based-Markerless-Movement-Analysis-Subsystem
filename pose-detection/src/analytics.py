@@ -15,3 +15,26 @@ def calculate_2d_angle(a, b, c):
 def calculate_symmetry_index(left_val, right_val):
     if (left_val + right_val) == 0: return 0.0
     return round(abs(left_val - right_val) / (0.5 * (left_val + right_val)), 2)
+
+def calculate_3d_angle(a, b, c):
+    """
+    Calculates the 3D angle (in degrees) at joint b given three 3D points a, b, c.
+    Each point should be a sequence of 3 floats (x, y, z).
+    """
+    try:
+        vec_ba = np.array(a) - np.array(b)
+        vec_bc = np.array(c) - np.array(b)
+        
+        norm_ba = np.linalg.norm(vec_ba)
+        norm_bc = np.linalg.norm(vec_bc)
+        
+        if norm_ba == 0 or norm_bc == 0:
+            return 0.0
+            
+        cosine_angle = np.dot(vec_ba, vec_bc) / (norm_ba * norm_bc)
+        cosine_angle = np.clip(cosine_angle, -1.0, 1.0)
+        
+        angle = np.arccos(cosine_angle)
+        return round(np.degrees(angle), 2)
+    except Exception:
+        return 0.0

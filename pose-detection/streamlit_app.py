@@ -4,19 +4,17 @@ import numpy as np
 import tempfile
 import time
 import math
-import mediapipe as mp
-from mediapipe.tasks import python
-from mediapipe.tasks.python import vision
+from src.pipeline import PoseEstimationPipeline
+from src.analytics import calculate_3d_angle
 
 # --- APP CONFIGURATION & UI ---
 st.set_page_config(page_title="Team 5 Gait Analyzer Pro", layout="wide")
 st.title("🏃‍♂️ Clinical Gait Subsystem - Advanced Local Testbed")
 st.markdown("Equipped with **EMA Signal Smoothing**, **Occlusion Memory Hold**, and **Biomechanical Visualizations**.")
 
-# Sidebar Settings
-st.sidebar.header("Assessment Settings")
-patient_id = st.sidebar.text_input("Patient ID", value="PT-001")
-smoothing_alpha = st.sidebar.slider("EMA Filter Smoothing (Lower = Smoother, Higher = Faster)", 0.05, 1.0, 0.25)
+# Configuration Constants
+patient_id = "PT-001"
+smoothing_alpha = 0.25
 
 mode = st.radio("Select Input Source:", ["Live Webcam (Instant Testing)", "Upload Video File"])
 
@@ -58,76 +56,105 @@ class ClinicalTrackingProcessor:
             # Completely lost
             return None
 
-def calculate_2d_angle(a, b, c):
-    """Calculates the interior angle at joint 'b'."""
-    try:
-        radians = math.atan2(c[1] - b[1], c[0] - b[0]) - math.atan2(a[1] - b[1], a[0] - b[0])
-        angle = abs(radians * 180.0 / math.pi)
-        if angle > 180.0:
-            angle = 360.0 - angle
-        return int(angle)
-    except:
-        return 0
-
-# --- INITIALIZE PIPELINE OPTIONS ---
-base_options = python.BaseOptions(model_asset_path='pose_landmarker_full.task')
-options = vision.PoseLandmarkerOptions(
-    base_options=base_options,
-    running_mode=vision.RunningMode.VIDEO,
-    min_pose_detection_confidence=0.4, # Slightly lower to catch tricky positions
-    min_tracking_confidence=0.4
-)
+# --- PIPELINE INITIALIZATION ---
 
 # --- CORE RENDER LOOP ---
 def run_processing_loop(source_input, is_webcam=False):
     cap = cv2.VideoCapture(source_input)
     fps = cap.get(cv2.CAP_PROP_FPS) if cap.get(cv2.CAP_PROP_FPS) > 0 else 30
     
-    frame_placeholder = st.empty()
-    status_placeholder = st.empty()
+    # Side-by-side layout columns to fit all elements without scrolling
+    col1, col2 = st.columns([3, 2])
     
+    with col1:
+        st.markdown("### Video Stream")
+        frame_placeholder = st.empty()
+        status_placeholder = st.empty()
+        
+    with col2:
+        st.markdown("### Live Telemetry & Landmarks")
+        tab1, tab2, tab3 = st.tabs(["3D Coordinates Table", "Raw Landmarks Output", "Raw Left Knee JSON"])
+        with tab1:
+            world_landmarks_placeholder = st.empty()
+        with tab2:
+            raw_landmarks_placeholder = st.empty()
+        with tab3:
+            raw_landmark_placeholder = st.empty()
+            
     # Instantiate our filter/memory engine
     tracker = ClinicalTrackingProcessor(alpha=smoothing_alpha)
     frame_idx = 0
     
-    with vision.PoseLandmarker.create_from_options(options) as landmarker:
+    # Target Gait Landmark Index Mapping
+    target_indices = {
+        "l_shoulder": 11, "r_shoulder": 12,
+        "l_hip": 23, "r_hip": 24,
+        "l_knee": 25, "r_knee": 26,
+        "l_ankle": 27, "r_ankle": 28
+    }
+
+    webcam_retry_count = 0
+
+    with PoseEstimationPipeline(model_path='pose_landmarker_full.task', min_detection_confidence=0.4, min_tracking_confidence=0.4) as pipeline:
         while cap.isOpened():
             ret, frame = cap.read()
-            if not ret: break
+            if not ret:
+                # Retry loop to account for webcam hardware initialization delays
+                if is_webcam and webcam_retry_count < 30:
+                    webcam_retry_count += 1
+                    time.sleep(0.1)
+                    continue
+                break
+            
+            # Reset retry count once a frame is successfully read
+            webcam_retry_count = 0
 
             if is_webcam:
                 frame = cv2.flip(frame, 1)
 
             h, w, _ = frame.shape
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
 
             timestamp_ms = int(time.perf_counter() * 1000) if is_webcam else int((frame_idx / fps) * 1000)
-            results = landmarker.detect_for_video(mp_image, timestamp_ms)
+            landmarks, world_landmarks = pipeline.process_frame(rgb_frame, timestamp_ms)
 
-            # Target Gait Landmark Index Mapping
-            target_indices = {
-                "l_shoulder": 11, "r_shoulder": 12,
-                "l_hip": 23, "r_hip": 24,
-                "l_knee": 25, "r_knee": 26,
-                "l_ankle": 27, "r_ankle": 28
-            }
+            # Extract coordinates via pipeline and update tracker
+            raw_coords = pipeline.extract_joint_coordinates(landmarks, w, h, target_indices)
+            world_coords = pipeline.extract_world_coordinates(world_landmarks, target_indices)
+
+            # Format and display metric world coordinates in tab 1
+            world_landmarks_md = "| Joint | X (Left/Right) | Y (Up/Down) | Z (Depth) |\n|---|---|---|---|\n"
+            for name, coord in world_coords.items():
+                if coord is not None:
+                    world_landmarks_md += f"| **{name}** | {coord[0]:.3f} m | {coord[1]:.3f} m | {coord[2]:.3f} m |\n"
+                else:
+                    world_landmarks_md += f"| **{name}** | Tracking Lost | Tracking Lost | Tracking Lost |\n"
+            world_landmarks_placeholder.markdown(world_landmarks_md)
+
+            # Format and display raw landmark structure for Left Knee (index 25) in tab 3
+            if world_landmarks and len(world_landmarks) > 25:
+                l_knee_raw = world_landmarks[25]
+                raw_landmark_placeholder.json({
+                    "x": l_knee_raw.x,
+                    "y": l_knee_raw.y,
+                    "z": l_knee_raw.z,
+                    "visibility": l_knee_raw.visibility,
+                    "presence": l_knee_raw.presence
+                })
+
+            # Format and display all raw world landmarks in tab 2 as a structured table
+            raw_landmarks_md = "| Landmark | Index | X (m) | Y (m) | Z (m) | Visibility | Presence |\n|---|---|---|---|---|---|---|\n"
+            for name, idx in target_indices.items():
+                if world_landmarks and idx < len(world_landmarks):
+                    lm = world_landmarks[idx]
+                    raw_landmarks_md += f"| **{name}** | {idx} | {lm.x:.4f} | {lm.y:.4f} | {lm.z:.4f} | {lm.visibility:.4f} | {lm.presence:.4f} |\n"
+                else:
+                    raw_landmarks_md += f"| **{name}** | {idx} | Lost | Lost | Lost | Lost | Lost |\n"
+            raw_landmarks_placeholder.markdown(raw_landmarks_md)
             
             clean_points = {}
-            
-            # Extract and pass raw keypoints through the memory & filtering layer
             for name, idx in target_indices.items():
-                raw_coord = None
-                detected = False
-                
-                if results.pose_landmarks and len(results.pose_landmarks) > 0:
-                    lm = results.pose_landmarks[0][idx]
-                    # Check MediaPipe visibility confidence score
-                    if lm.presence > 0.5:
-                        raw_coord = (int(lm.x * w), int(lm.y * h))
-                        detected = True
-                
-                # Filter/Memory calculation
+                raw_coord, detected = raw_coords[name]
                 clean_points[name] = tracker.process_landmark(idx, raw_coord, detected)
 
             # --- DRAWING EXPANDED VISUALIZATIONS ON CANVAS ---
@@ -156,19 +183,21 @@ def run_processing_loop(source_input, is_webcam=False):
                     cv2.line(frame, pt1, pt2, (0, 200, 0), 2)
 
             # 3. Calculate Joint Flexion and Draw On-Canvas Callouts
-            if clean_points["l_hip"] and clean_points["l_knee"] and clean_points["l_ankle"]:
-                l_knee_angle = calculate_2d_angle(clean_points["l_hip"], clean_points["l_knee"], clean_points["l_ankle"])
-                # Safe integer placement tuple
-                text_pos_l = (int(clean_points["l_knee"][0]) + 15, int(clean_points["l_knee"][1]))
-                cv2.putText(frame, f"L: {l_knee_angle}deg", text_pos_l,
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+            # Left Knee (3D)
+            if world_coords["l_hip"] and world_coords["l_knee"] and world_coords["l_ankle"]:
+                l_knee_angle_3d = calculate_3d_angle(world_coords["l_hip"], world_coords["l_knee"], world_coords["l_ankle"])
+                if clean_points["l_knee"]:
+                    text_pos_l = (int(clean_points["l_knee"][0]) + 15, int(clean_points["l_knee"][1]))
+                    cv2.putText(frame, f"L: {int(l_knee_angle_3d)}deg", text_pos_l,
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
                 
-            if clean_points["r_hip"] and clean_points["r_knee"] and clean_points["r_ankle"]:
-                r_knee_angle = calculate_2d_angle(clean_points["r_hip"], clean_points["r_knee"], clean_points["r_ankle"])
-                # Safe integer placement tuple
-                text_pos_r = (int(clean_points["r_knee"][0]) - 85, int(clean_points["r_knee"][1]))
-                cv2.putText(frame, f"R: {r_knee_angle}deg", text_pos_r,
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+            # Right Knee (3D)
+            if world_coords["r_hip"] and world_coords["r_knee"] and world_coords["r_ankle"]:
+                r_knee_angle_3d = calculate_3d_angle(world_coords["r_hip"], world_coords["r_knee"], world_coords["r_ankle"])
+                if clean_points["r_knee"]:
+                    text_pos_r = (int(clean_points["r_knee"][0]) - 85, int(clean_points["r_knee"][1]))
+                    cv2.putText(frame, f"R: {int(r_knee_angle_3d)}deg", text_pos_r,
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
     
             # 4. Draw Joint Target Trackers (The Dots)
             for name, pt in clean_points.items():
@@ -181,8 +210,8 @@ def run_processing_loop(source_input, is_webcam=False):
                     # Outer target ring
                     cv2.circle(frame, pt_int, 10, (255, 255, 255), 1)
 
-            # Render updated UI frame matrix
-            frame_placeholder.image(frame, channels="BGR", use_container_width=True)
+            # Render updated UI frame matrix within the first layout column
+            frame_placeholder.image(frame, channels="BGR", width="stretch")
             frame_idx += 1
             if not is_webcam:
                 time.sleep(1.0 / fps)
