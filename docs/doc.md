@@ -104,3 +104,17 @@ This is to test the working graphic pipeline
 ```sh
 uv run streamlit run streamlit_app.py
 ```
+
+
+## Resource and Methodology
+[Hill type Muscle Model](https://www.sciencedirect.com/topics/engineering/hill-type-muscle-model)
+
+
+[?? paper](./3728300.pdf)
+
+Anatomical Simulation & Intel CollaborationTo drastically reduce artist iteration time, Ziva developed anatomy transfer pipelines and finite element simulations.The Application: Ziva's software integrates ML technologies that compute complex volumetric musculoskeletal anatomy, automatically inferring muscle volume and fiber fields based on surface controls.
+
+Performance: Powered by Intel's AI and ML libraries, the pipeline trains ML inference at scale, empowering visual effects studios to animate photorealistic creatures quickly
+
+
+[link paper](https://github.com/Unity-Technologies/ziva-vfx-utils)

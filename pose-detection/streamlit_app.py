@@ -3,9 +3,12 @@ import cv2
 import numpy as np
 import tempfile
 import time
+import os
 from src.pipeline import PoseEstimationPipeline
-from src.analytics import calculate_3d_angle, ClinicalTrackingProcessor
+from src.analytics import calculate_3d_angle, ClinicalTrackingProcessor, SquatAnalyzer, GaitAnalyzer
+from src.logger import TelemetryLogger
 from src.qc import get_brightness
+from src.postprocessing import KinematicFilter
 from src.config import *
 
 # --- APP CONFIGURATION & UI ---
@@ -50,8 +53,11 @@ def run_processing_loop(source_input, is_webcam=False):
         with tab3:
             raw_landmark_placeholder = st.empty()
             
-    # Instantiate our filter/memory engine
+    # Instantiate our filter/memory engine and analyzers
     tracker = ClinicalTrackingProcessor(alpha=SMOOTHING_ALPHA, max_missing_frames=MAX_MISSING_FRAMES)
+    squat_analyzer = SquatAnalyzer(valgus_threshold=-0.05)
+    gait_analyzer = GaitAnalyzer(step_threshold=0.25, stance_threshold=0.15)
+    session_logger = TelemetryLogger(patient_id=PATIENT_ID)
     frame_idx = 0
     
     # Target Gait Landmark Index Mapping
@@ -90,14 +96,7 @@ def run_processing_loop(source_input, is_webcam=False):
                 timestamp_ms = int(time.perf_counter() * 1000) if is_webcam else int((frame_idx / fps) * 1000)
                 landmarks, world_landmarks, segmentation_mask = pipeline.process_frame(rgb_frame, timestamp_ms)
 
-                # Draw the "full mass" segmentation overlay
-                if segmentation_mask is not None:
-                    # MediaPipe mask can be [H, W] or [H, W, 1]. Squeeze to ensure it's [H, W]
-                    condition = np.squeeze(segmentation_mask > 0.5)
-                    overlay = frame.copy()
-                    overlay[condition] = (255, 100, 0) # Deep Cyan/Blue color for the body mass
-                    # Blend with 30% transparency so we can still see the original video
-                    frame = cv2.addWeighted(overlay, 0.4, frame, 0.6, 0)
+                # Mask rendering moved further down after analysis to allow dynamic colors
 
                 # Extract coordinates via pipeline and update tracker
                 raw_coords = pipeline.extract_joint_coordinates(landmarks, w, h, target_indices)
@@ -137,6 +136,64 @@ def run_processing_loop(source_input, is_webcam=False):
                 # Apply Calibration Multiplier to all 3D Data
                 if is_calibrated:
                     world_coords = pipeline.apply_calibration(world_coords, calibration_multiplier)
+
+                # Process Biomechanics (Squat & Gait Analysis)
+                squat_metrics = squat_analyzer.process_frame(world_coords)
+                gait_metrics = gait_analyzer.process_frame(world_coords)
+                
+                combined_metrics = {}
+                if squat_metrics: combined_metrics.update(squat_metrics)
+                if gait_metrics: combined_metrics.update(gait_metrics)
+                
+                # Compute 3D Angles for Logging
+                angles = {}
+                if world_coords.get("l_hip") and world_coords.get("l_knee") and world_coords.get("l_ankle"):
+                    angles["l_knee_angle_3d"] = calculate_3d_angle(world_coords["l_hip"], world_coords["l_knee"], world_coords["l_ankle"])
+                if world_coords.get("r_hip") and world_coords.get("r_knee") and world_coords.get("r_ankle"):
+                    angles["r_knee_angle_3d"] = calculate_3d_angle(world_coords["r_hip"], world_coords["r_knee"], world_coords["r_ankle"])
+                    
+                session_logger.log_frame(timestamp_ms, world_coords, angles, combined_metrics)
+                
+                is_valgus = False
+                if squat_metrics:
+                    is_valgus = squat_metrics["valgus_l"] or squat_metrics["valgus_r"]
+                    
+                    # Display Squat Metrics HUD (black box, top-right)
+                    cv2.rectangle(frame, (w - 240, 10), (w - 10, 200), (0, 0, 0), -1)
+                    
+                    state_txt = "DOWN" if squat_metrics["is_squatting"] else "UP"
+                    state_color = (0, 255, 255) if squat_metrics["is_squatting"] else (255, 255, 255)
+                    cv2.putText(frame, f"SQUATS: {squat_metrics['reps']}  [{state_txt}]", (w - 230, 35), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 0) if squat_metrics['reps'] > 0 else (255, 255, 255), 2)
+                    cv2.putText(frame, f"DEPTH: {squat_metrics['current_depth']:.3f} (min: {squat_metrics['min_depth_this_rep']:.3f})", (w - 230, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
+                    
+                    # 3D Knee angles
+                    cv2.putText(frame, f"KNEE L: {squat_metrics['knee_angle_l']:.1f}deg  R: {squat_metrics['knee_angle_r']:.1f}deg", (w - 230, 85), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (200, 255, 200), 1)
+                    cv2.putText(frame, f"MAX FLEX L: {squat_metrics['max_flexion_l']:.1f}  R: {squat_metrics['max_flexion_r']:.1f}", (w - 230, 108), cv2.FONT_HERSHEY_SIMPLEX, 0.48, (180, 200, 255), 1)
+                    
+                    # Valgus status
+                    vl_color = (0, 0, 255) if squat_metrics["valgus_l"] else (0, 255, 0)
+                    vr_color = (0, 0, 255) if squat_metrics["valgus_r"] else (0, 255, 0)
+                    cv2.putText(frame, f"VALGUS L: {'YES' if squat_metrics['valgus_l'] else 'NO'} ({squat_metrics['valgus_idx_l']:.3f}m)", (w - 230, 133), cv2.FONT_HERSHEY_SIMPLEX, 0.48, vl_color, 1)
+                    cv2.putText(frame, f"VALGUS R: {'YES' if squat_metrics['valgus_r'] else 'NO'} ({squat_metrics['valgus_idx_r']:.3f}m)", (w - 230, 155), cv2.FONT_HERSHEY_SIMPLEX, 0.48, vr_color, 1)
+                    
+                if gait_metrics:
+                    # Display Gait Metrics HUD (below Squat HUD)
+                    cv2.rectangle(frame, (w - 240, 210), (w - 10, 320), (0, 0, 0), -1)
+                    cv2.putText(frame, f"STEPS: {gait_metrics['step_count']}", (w - 230, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0) if gait_metrics['step_count'] > 0 else (255, 255, 255), 2)
+                    cv2.putText(frame, f"PHASE: {gait_metrics['phase']}", (w - 230, 268), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 1)
+                    cv2.putText(frame, f"STRIDE: {gait_metrics['current_step_dist']:.2f}m", (w - 230, 290), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 255), 1)
+                    
+                    si_color = (0, 0, 255) if gait_metrics['is_asymmetric'] else (0, 255, 0)
+                    cv2.putText(frame, f"SYMMETRY: {gait_metrics['symmetry_index']}%", (w - 230, 312), cv2.FONT_HERSHEY_SIMPLEX, 0.55, si_color, 1)
+                
+                # Draw the "full mass" segmentation overlay dynamically
+                if segmentation_mask is not None:
+                    condition = np.squeeze(segmentation_mask > 0.5)
+                    overlay = frame.copy()
+                    # Color changes to RED/ORANGE if valgus detected, else CYAN/BLUE
+                    color = (0, 100, 255) if is_valgus else (255, 100, 0)
+                    overlay[condition] = color
+                    frame = cv2.addWeighted(overlay, 0.4, frame, 0.6, 0)
 
                 # Format and display metric world coordinates in tab 1
                 world_landmarks_md = "| Joint | X (Left/Right) | Y (Up/Down) | Z (Depth) |\n|---|---|---|---|\n"
@@ -210,19 +267,17 @@ def run_processing_loop(source_input, is_webcam=False):
 
                     # 3. Calculate Joint Flexion and Draw On-Canvas Callouts
                     # Left Knee (3D)
-                    if world_coords["l_hip"] and world_coords["l_knee"] and world_coords["l_ankle"]:
-                        l_knee_angle_3d = calculate_3d_angle(world_coords["l_hip"], world_coords["l_knee"], world_coords["l_ankle"])
+                    if "l_knee_angle_3d" in angles:
                         if clean_points["l_knee"]:
                             text_pos_l = (int(clean_points["l_knee"][0]) + 15, int(clean_points["l_knee"][1]))
-                            cv2.putText(frame, f"L: {int(l_knee_angle_3d)}deg", text_pos_l,
+                            cv2.putText(frame, f"L: {int(angles['l_knee_angle_3d'])}deg", text_pos_l,
                                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
                         
                     # Right Knee (3D)
-                    if world_coords["r_hip"] and world_coords["r_knee"] and world_coords["r_ankle"]:
-                        r_knee_angle_3d = calculate_3d_angle(world_coords["r_hip"], world_coords["r_knee"], world_coords["r_ankle"])
+                    if "r_knee_angle_3d" in angles:
                         if clean_points["r_knee"]:
                             text_pos_r = (int(clean_points["r_knee"][0]) - 85, int(clean_points["r_knee"][1]))
-                            cv2.putText(frame, f"R: {int(r_knee_angle_3d)}deg", text_pos_r,
+                            cv2.putText(frame, f"R: {int(angles['r_knee_angle_3d'])}deg", text_pos_r,
                                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
             
                 # 4. Draw Joint Target Trackers (The Dots) & QC 3: Occlusion Warning
@@ -265,14 +320,71 @@ def run_processing_loop(source_input, is_webcam=False):
 
     finally:
         cap.release()
-    status_placeholder.success(f"Stream completed. Patient: {PATIENT_ID}")
+        
+    saved_file = session_logger.save()
+    if saved_file:
+        # Apply Post-Processing Kinematic Filters (Outlier Rejection -> PCHIP -> Butterworth)
+        filter_engine = KinematicFilter()
+        filtered_file = filter_engine.process_session_csv(saved_file)
+        
+        status_placeholder.success(f"Stream completed. Telemetry processed & filtered to {filtered_file}")
+        with open(filtered_file, "rb") as f:
+            st.download_button("Download Filtered Telemetry CSV (Physics-Ready)", f.read(), file_name=os.path.basename(filtered_file), mime="text/csv")
+    else:
+        status_placeholder.success(f"Stream completed. Patient: {PATIENT_ID}")
 
 # --- APP METHOD CONTROLLERS ---
 if mode == "Live Webcam (Instant Testing)":
-    run_webcam = st.checkbox("🔌 Turn On Live Webcam Stream")
-    if run_webcam:
-        st.subheader("Live Biomechanical Telemetry Viewport")
-        run_processing_loop(0, is_webcam=True)
+    st.subheader("Webcam Recording & Calibration Mode")
+    st.markdown("Check the box below to start recording. Hold an A4 paper in frame to calibrate. Uncheck to save.")
+    
+    is_recording = st.checkbox("🔴 Start Recording")
+    cache_video_path = "data/latest_recording.mp4"
+    
+    if is_recording:
+        cap = cv2.VideoCapture(0)
+        # Ensure data directory exists
+        os.makedirs("data", exist_ok=True)
+        
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(cache_video_path, fourcc, 30.0, (int(cap.get(3)), int(cap.get(4))))
+        
+        frame_placeholder = st.empty()
+        st.warning("Recording in progress... Uncheck the box above to stop.")
+        
+        # Mini pipeline just for A4 detection feedback
+        with PoseEstimationPipeline() as pipeline:
+            while cap.isOpened():
+                ret, frame = cap.read()
+                if not ret:
+                    time.sleep(0.1)
+                    continue
+                
+                frame = cv2.flip(frame, 1)
+                
+                # Write pristine frame to disk
+                out.write(frame)
+                
+                # Draw A4 overlay for user feedback (but don't save to the disk video)
+                ui_frame = frame.copy()
+                a4_contour = pipeline.detect_a4_paper(ui_frame)
+                if a4_contour is not None:
+                    cv2.drawContours(ui_frame, [a4_contour], -1, (255, 0, 0), 3)
+                    cv2.putText(ui_frame, "A4 TARGET ACQUIRED", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
+                else:
+                    cv2.putText(ui_frame, "A4 NOT DETECTED", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 255), 2)
+                    
+                frame_placeholder.image(ui_frame, channels="BGR")
+                
+        cap.release()
+        out.release()
+    else:
+        if os.path.exists(cache_video_path):
+            st.success(f"Cached video ready at: {cache_video_path}")
+            if st.button("Process Cached Video"):
+                st.subheader("Processing Video Feed")
+                with st.spinner("Extracting kinematics..."):
+                    run_processing_loop(cache_video_path, is_webcam=False)
 
 elif mode == "Upload Video File":
     uploaded_file = st.file_uploader("Upload Patient Movement Video", type=["mp4", "mov", "avi"])
