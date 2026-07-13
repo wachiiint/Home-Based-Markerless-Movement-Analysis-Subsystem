@@ -2,6 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.models.calibration import BoardDetectionDiagnostics
+
 
 class VideoMetadata(BaseModel):
     duration_sec: float
@@ -21,6 +23,9 @@ class PoseQuality(BaseModel):
 
 class ClinicalMetrics(BaseModel):
     joint_angles: dict[str, float]
+    joint_angles_3d: dict[str, float] = Field(default_factory=dict)
+    scale_mm_per_unit: float | None = None
+    scale_source: str | None = None
     gait_parameters: dict = Field(default_factory=dict)
     compensation: dict = Field(default_factory=dict)
     smoothness: dict = Field(default_factory=dict)
@@ -34,6 +39,13 @@ class ScreeningResult(BaseModel):
     flags: list[str]
 
 
+class TransformationMatrix6DoF(BaseModel):
+    frame: str = "camera_to_floor"
+    matrix: list[list[float]]  # 4x4 homogeneous
+    translation_mm: list[float]  # [x, y, z]
+    rotation_deg: list[float]  # euler xyz
+
+
 class MovementAssessmentResponse(BaseModel):
     model_config = ConfigDict(extra="allow")
 
@@ -41,7 +53,10 @@ class MovementAssessmentResponse(BaseModel):
     video_metadata: VideoMetadata
     clinical_metrics: ClinicalMetrics
     screening_result: ScreeningResult
-    transformation_matrix_6dof: None = None
+    transformation_matrix_6dof: TransformationMatrix6DoF | None = None
+    analysis_mode: Literal["2d", "3d"] = "2d"
+    board_diagnostics: BoardDetectionDiagnostics | None = None
+    guard_warnings: list[str] = Field(default_factory=list)
 
 
 class HealthResponse(BaseModel):

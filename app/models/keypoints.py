@@ -1,17 +1,27 @@
+# Halpe26 keypoint indices. See rtmlib's halpe26 skeleton definition for the
+# authoritative order; indices 17-25 are head/neck/hip then the six foot points.
+NOSE = 0
 LEFT_SHOULDER = 5
 RIGHT_SHOULDER = 6
+LEFT_ELBOW = 7
+RIGHT_ELBOW = 8
+LEFT_WRIST = 9
+RIGHT_WRIST = 10
 LEFT_HIP = 11
 RIGHT_HIP = 12
 LEFT_KNEE = 13
 RIGHT_KNEE = 14
 LEFT_ANKLE = 15
 RIGHT_ANKLE = 16
-LEFT_BIG_TOE = 17
-LEFT_SMALL_TOE = 18
-LEFT_HEEL = 19
-RIGHT_BIG_TOE = 20
-RIGHT_SMALL_TOE = 21
-RIGHT_HEEL = 22
+HEAD = 17
+NECK = 18
+HIP = 19  # pelvis centre
+LEFT_BIG_TOE = 20
+RIGHT_BIG_TOE = 21
+LEFT_SMALL_TOE = 22
+RIGHT_SMALL_TOE = 23
+LEFT_HEEL = 24
+RIGHT_HEEL = 25
 
 LEFT_LEG = {
     "shoulder": LEFT_SHOULDER,
@@ -30,9 +40,9 @@ RIGHT_LEG = {
 }
 
 
-def get_keypoint(keypoints, index: int) -> tuple[float, float, float]:
+def get_keypoint(keypoints, index: int) -> tuple[float, float]:
     point = keypoints[index]
-    return float(point[0]), float(point[1]), float(point[2])
+    return float(point[0]), float(point[1])
 
 
 def leg_indices(side: str) -> dict[str, int]:

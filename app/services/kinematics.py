@@ -1,8 +1,12 @@
-from app.utils.math_utils import angle_degrees
+from app.utils.math_utils import angle_degrees, vector_angle_degrees
 
 
 def three_point_angle(point_a, vertex, point_b) -> float:
     return angle_degrees(point_a, vertex, point_b)
+
+
+def three_point_angle_3d(point_a, vertex, point_b) -> float:
+    return vector_angle_degrees(point_a, vertex, point_b)
 
 
 def range_of_motion(values: list[float]) -> tuple[float, float, float]:

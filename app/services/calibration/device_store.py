@@ -14,7 +14,6 @@ from app.models.calibration import DeviceIntrinsics
 class DeviceStore:
     def __init__(self, directory: Path) -> None:
         self.directory = Path(directory)
-        self.directory.mkdir(parents=True, exist_ok=True)
         self.path = self.directory / "device_intrinsics.json"
 
     def _load(self) -> dict:
@@ -23,6 +22,7 @@ class DeviceStore:
         return json.loads(self.path.read_text(encoding="utf-8"))
 
     def _save(self, data: dict) -> None:
+        self.directory.mkdir(parents=True, exist_ok=True)
         self.path.write_text(json.dumps(data, indent=2), encoding="utf-8")
 
     def put(self, intrinsics: DeviceIntrinsics) -> None:

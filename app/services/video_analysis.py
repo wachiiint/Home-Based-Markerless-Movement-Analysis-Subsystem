@@ -1,3 +1,5 @@
+import logging
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import cv2
@@ -7,7 +9,14 @@ from app.core.config import Settings
 from app.models.keypoints import leg_indices
 from app.models.task_config import TASK_CONFIGS
 from app.schemas.movement import TaskType
+from app.services.calibration.device_id import extract_capture_metadata
+from app.services.calibration.session import SessionCalibrator
+from app.services.calibration.transform import camera_to_floor_6dof
 from app.services.kinematics import three_point_angle, range_of_motion
+from app.services.lifting.angles_3d import angle_series_3d, supports_3d_angle
+from app.services.lifting.guards import bone_length_consistency
+from app.services.lifting.metric_scale import resolve_metric_scale
+from app.services.lifting.pipeline import lift_pose_sequence
 from app.services.pose_estimator import PoseEstimator
 from app.services.pose_sequence import FramePose2D, PoseSequence
 from app.services.response_mapper import build_assessment_response
@@ -15,6 +24,8 @@ from app.services.screening import screen_rom
 from app.services.smoothing import exponential_moving_average
 from app.services.subject_selector import select_main_subject
 from app.services.video_io import read_video_metadata
+
+logger = logging.getLogger(__name__)
 
 
 def _angle_for_frame(keypoints, scores, task_type: TaskType, side: str, threshold: float) -> float | None:
@@ -38,9 +49,13 @@ def _choose_side(keypoints, scores, task_type: TaskType, threshold: float) -> st
     return max(candidates)[1] if candidates else None
 
 
-def _collect_pose_sequence(input_path: Path, output_path: Path, metadata: dict, settings: Settings, estimator: PoseEstimator) -> PoseSequence:
+def _collect_pose_sequence(input_path: Path, output_path: Path, metadata: dict, settings: Settings, estimator: PoseEstimator, frame_observer=None) -> PoseSequence:
     """Pass 1: run 2D inference over sampled frames, write the annotated video,
-    and collect the main-subject 2D pose per frame into a ``PoseSequence``."""
+    and collect the main-subject 2D pose per frame into a ``PoseSequence``.
+
+    ``frame_observer`` (optional) is called with each sampled BGR frame before
+    annotation -- used by the session calibrator to detect the ChArUco board.
+    """
     capture = cv2.VideoCapture(str(input_path))
     writer = cv2.VideoWriter(str(output_path), cv2.VideoWriter_fourcc(*"mp4v"), settings.frame_sample_fps, (metadata["width"], metadata["height"]))
     if not writer.isOpened():
@@ -58,6 +73,8 @@ def _collect_pose_sequence(input_path: Path, output_path: Path, metadata: dict, 
             if frame_index % sample_interval:
                 frame_index += 1
                 continue
+            if frame_observer is not None:
+                frame_observer(frame)
             keypoints, scores = estimator.infer(frame)
             subject = select_main_subject(list(zip(keypoints, scores)))
             annotated = frame.copy()
@@ -89,9 +106,68 @@ def _collect_pose_sequence(input_path: Path, output_path: Path, metadata: dict, 
     return PoseSequence(frames=frames, width=metadata["width"], height=metadata["height"])
 
 
-def analyze_video(input_path: Path, output_path: Path, task_type: TaskType, view: str, settings: Settings, estimator: PoseEstimator) -> object:
+@dataclass
+class _ThreeDResult:
+    analysis_mode: str = "2d"
+    joint_angles_3d: dict = field(default_factory=dict)
+    scale_mm_per_unit: float | None = None
+    scale_source: str | None = None
+    transformation_6dof: object | None = None
+    board_diagnostics: object | None = None
+    guard_warnings: list = field(default_factory=list)
+
+
+def _augment_with_3d(sequence, task_type, side, settings, lifter, calibrator, device_meta, subject_height_mm) -> _ThreeDResult:
+    """Best-effort 3D metrics. Never raises: any failure returns a 2D result so
+    the endpoint always responds (falls back to the 2D analysis)."""
+    result = _ThreeDResult()
+    if calibrator is None or lifter is None:
+        return result
+    try:
+        calibration, diagnostics = calibrator.finalize(device_meta, (sequence.width, sequence.height))
+        result.board_diagnostics = diagnostics
+        result.transformation_6dof = camera_to_floor_6dof(calibration)
+        if calibration is not None:
+            result.guard_warnings += list(calibration.warnings)
+        if calibration is None or not calibration.ok:
+            return result
+        if not supports_3d_angle(task_type) or side is None:
+            return result  # calibrated, but angles stay 2D (e.g. ankle)
+
+        lifted = lift_pose_sequence(sequence, lifter)
+        ok, _cv, bone_warnings = bone_length_consistency(lifted.keypoints_3d, lifted.valid_mask)
+        result.guard_warnings += bone_warnings
+        if not ok:
+            return result  # unreliable lift -> keep 2D angles
+
+        angles = angle_series_3d(lifted.keypoints_3d, task_type, side)
+        smoothed = exponential_moving_average(angles, settings.smoothing_alpha)
+        min_a, max_a, rom = range_of_motion(smoothed)
+        config = TASK_CONFIGS[task_type]
+        result.joint_angles_3d = {
+            f"{config.max_key}_3d": round(max_a, 2),
+            f"{config.min_key}_3d": round(min_a, 2),
+            f"{config.rom_key}_3d": rom,
+        }
+        scale, scale_source, scale_warnings = resolve_metric_scale(
+            lifted.keypoints_2d_h36m, lifted.keypoints_3d, lifted.valid_mask, calibration, subject_height_mm,
+        )
+        result.scale_mm_per_unit = scale
+        result.scale_source = scale_source
+        result.guard_warnings += scale_warnings
+        result.analysis_mode = "3d"
+    except Exception:
+        logger.exception("3D augmentation failed; using 2D result")
+        result.analysis_mode = "2d"
+        result.guard_warnings.append("3d augmentation failed; see logs")
+    return result
+
+
+def analyze_video(input_path: Path, output_path: Path, task_type: TaskType, view: str, settings: Settings, estimator: PoseEstimator, lifter=None, device_store=None, subject_height_mm: float | None = None) -> object:
     metadata = read_video_metadata(input_path)
-    sequence = _collect_pose_sequence(input_path, output_path, metadata, settings, estimator)
+    calibrator = SessionCalibrator(device_store) if (lifter is not None and device_store is not None) else None
+    observer = calibrator.observe if calibrator is not None else None
+    sequence = _collect_pose_sequence(input_path, output_path, metadata, settings, estimator, frame_observer=observer)
 
     angle_samples: list[float] = []
     confidence_samples: list[float] = []
@@ -126,6 +202,10 @@ def analyze_video(input_path: Path, output_path: Path, task_type: TaskType, view
         min_valid_frame_ratio=settings.min_valid_frame_ratio,
         mean_keypoint_confidence=mean_confidence,
     )
+
+    device_meta = extract_capture_metadata(input_path)
+    three_d = _augment_with_3d(sequence, task_type, side, settings, lifter, calibrator, device_meta, subject_height_mm)
+
     return build_assessment_response(
         task_type=task_type,
         view=view,
@@ -141,4 +221,11 @@ def analyze_video(input_path: Path, output_path: Path, task_type: TaskType, view
         confidence_score=confidence,
         flags=flags,
         analyzed_side=side,
+        analysis_mode=three_d.analysis_mode,
+        joint_angles_3d=three_d.joint_angles_3d,
+        scale_mm_per_unit=three_d.scale_mm_per_unit,
+        scale_source=three_d.scale_source,
+        transformation_6dof=three_d.transformation_6dof,
+        board_diagnostics=three_d.board_diagnostics,
+        guard_warnings=three_d.guard_warnings,
     )

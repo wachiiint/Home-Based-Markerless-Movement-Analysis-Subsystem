@@ -14,6 +14,8 @@ from app.core.logging import setup_logging
 from app.core.security import require_service_key
 from app.schemas.movement import TaskType
 from app.schemas.response import DemoAssessmentResponse, HealthResponse, MovementAssessmentResponse
+from app.services.calibration.device_store import DeviceStore
+from app.services.lifting.lifter import build_lifter
 from app.services.pose_estimator import RtmlibAdapter
 from app.services.response_mapper import build_fake_response
 from app.services.video_analysis import analyze_video
@@ -50,6 +52,8 @@ async def lifespan(app: FastAPI):
     app.state.device = select_device(settings.device)
     app.state.model_loaded = bool(settings.fake_mode)
     app.state.pose_estimator = None
+    app.state.lifter = None
+    app.state.device_store = None
     app.state.demo_results = {}
     if settings.fake_mode:
         logger.info("FAKE_MODE enabled; skipping pose model load")
@@ -59,11 +63,17 @@ async def lifespan(app: FastAPI):
             app.state.model_loaded = True
         except Exception:
             logger.exception("pose model failed to load")
+        # 3D path (Phase D): lifter is None unless enabled and weights pass the
+        # I/O guard, so analysis degrades to 2D cleanly.
+        app.state.lifter = build_lifter(settings.enable_3d, settings.motionbert_model_path, settings.model_backend)
+        app.state.device_store = DeviceStore(Path(settings.calibration_data_dir))
+    app.state.analysis_mode_available = "3d" if app.state.lifter is not None else "2d"
     logger.info(
-        "startup device=%s model_backend=%s model_loaded=%s",
+        "startup device=%s model_backend=%s model_loaded=%s analysis_mode=%s",
         app.state.device,
         settings.model_backend,
         app.state.model_loaded,
+        app.state.analysis_mode_available,
     )
     yield
 
@@ -79,7 +89,7 @@ def _cleanup_demo_results() -> None:
         shutil.rmtree(app.state.demo_results.pop(session_id)["directory"], ignore_errors=True)
 
 
-async def _run_real_analysis(file: UploadFile, task_type: TaskType, view: str) -> tuple[MovementAssessmentResponse, Path]:
+async def _run_real_analysis(file: UploadFile, task_type: TaskType, view: str, subject_height_mm: float | None = None) -> tuple[MovementAssessmentResponse, Path]:
     settings = app.state.settings
     if app.state.pose_estimator is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="pose model is not loaded")
@@ -87,7 +97,10 @@ async def _run_real_analysis(file: UploadFile, task_type: TaskType, view: str) -
     try:
         input_path = await save_upload(file, settings.demo_max_upload_mb * 1024 * 1024)
         output_path = input_path.parent / "annotated.mp4"
-        result = analyze_video(input_path, output_path, task_type, view, settings, app.state.pose_estimator)
+        result = analyze_video(
+            input_path, output_path, task_type, view, settings, app.state.pose_estimator,
+            lifter=app.state.lifter, device_store=app.state.device_store, subject_height_mm=subject_height_mm,
+        )
         return result, output_path
     except ValueError as exc:
         if input_path is not None:
@@ -129,6 +142,7 @@ async def assess_movement(
     task_type: TaskType = Form(...),
     view: str = Form(...),
     file: UploadFile = File(...),
+    subject_height_mm: float | None = Form(default=None),
 ) -> MovementAssessmentResponse:
     settings = app.state.settings
     normalized_view = view if view in {"frontal", "lateral"} else "frontal"
@@ -143,7 +157,7 @@ async def assess_movement(
     if settings.fake_mode:
         return build_fake_response(task_type, normalized_view, settings.frame_sample_fps)
     try:
-        result, output_path = await _run_real_analysis(file, task_type, normalized_view)
+        result, output_path = await _run_real_analysis(file, task_type, normalized_view, subject_height_mm)
         shutil.rmtree(output_path.parent, ignore_errors=True)
         return result
     except HTTPException:

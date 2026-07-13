@@ -52,6 +52,22 @@ class FloorPlane(BaseModel):
     d: float
 
 
+class BoardDetectionDiagnostics(BaseModel):
+    """Why the ChArUco board was (not) found, so a clinician can decide whether
+    to ask the patient to re-record. Advisory only -- the system never
+    auto-rejects (V1 is decision-support, not diagnosis)."""
+
+    detected: bool
+    frames_checked: int = 0
+    frames_with_any_marker: int = 0
+    max_corners_found: int = 0
+    brightness_mean: float = 0.0
+    blur_score: float = 0.0
+    likely_causes: list[str] = Field(default_factory=list)
+    recommendation: str = "ok"  # ok | retake | usable_2d
+    message: str = ""
+
+
 class CameraCalibration(BaseModel):
     """Per-session calibration output. All strategies return this shape."""
 
