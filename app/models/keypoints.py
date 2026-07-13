@@ -1,7 +1,12 @@
 # Halpe26 keypoint indices. See rtmlib's halpe26 skeleton definition for the
 # authoritative order; indices 17-25 are head/neck/hip then the six foot points.
+NOSE = 0
 LEFT_SHOULDER = 5
 RIGHT_SHOULDER = 6
+LEFT_ELBOW = 7
+RIGHT_ELBOW = 8
+LEFT_WRIST = 9
+RIGHT_WRIST = 10
 LEFT_HIP = 11
 RIGHT_HIP = 12
 LEFT_KNEE = 13
