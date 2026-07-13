@@ -9,6 +9,7 @@ from app.models.task_config import TASK_CONFIGS
 from app.schemas.movement import TaskType
 from app.services.kinematics import three_point_angle, range_of_motion
 from app.services.pose_estimator import PoseEstimator
+from app.services.pose_sequence import FramePose2D, PoseSequence
 from app.services.response_mapper import build_assessment_response
 from app.services.screening import screen_rom
 from app.services.smoothing import exponential_moving_average
@@ -37,8 +38,9 @@ def _choose_side(keypoints, scores, task_type: TaskType, threshold: float) -> st
     return max(candidates)[1] if candidates else None
 
 
-def analyze_video(input_path: Path, output_path: Path, task_type: TaskType, view: str, settings: Settings, estimator: PoseEstimator) -> object:
-    metadata = read_video_metadata(input_path)
+def _collect_pose_sequence(input_path: Path, output_path: Path, metadata: dict, settings: Settings, estimator: PoseEstimator) -> PoseSequence:
+    """Pass 1: run 2D inference over sampled frames, write the annotated video,
+    and collect the main-subject 2D pose per frame into a ``PoseSequence``."""
     capture = cv2.VideoCapture(str(input_path))
     writer = cv2.VideoWriter(str(output_path), cv2.VideoWriter_fourcc(*"mp4v"), settings.frame_sample_fps, (metadata["width"], metadata["height"]))
     if not writer.isOpened():
@@ -46,11 +48,7 @@ def analyze_video(input_path: Path, output_path: Path, task_type: TaskType, view
         raise ValueError("unable to create annotated video")
 
     sample_interval = max(1, round(metadata["fps"] / settings.frame_sample_fps))
-    angle_samples: list[float] = []
-    confidence_samples: list[float] = []
-    valid_frames = 0
-    processed_frames = 0
-    side: str | None = None
+    frames: list[FramePose2D] = []
     frame_index = 0
     try:
         while True:
@@ -63,6 +61,7 @@ def analyze_video(input_path: Path, output_path: Path, task_type: TaskType, view
             keypoints, scores = estimator.infer(frame)
             subject = select_main_subject(list(zip(keypoints, scores)))
             annotated = frame.copy()
+            subject_keypoints = subject_scores = None
             if subject is not None:
                 subject_keypoints, subject_scores = subject
                 from rtmlib import draw_skeleton
@@ -73,20 +72,44 @@ def analyze_video(input_path: Path, output_path: Path, task_type: TaskType, view
                     subject_scores[None, :],
                     kpt_thr=settings.min_keypoint_confidence,
                 )
-                if side is None:
-                    side = _choose_side(subject_keypoints, subject_scores, task_type, settings.min_keypoint_confidence)
-                if side:
-                    angle = _angle_for_frame(subject_keypoints, subject_scores, task_type, side, settings.min_keypoint_confidence)
-                    if angle is not None:
-                        angle_samples.append(angle)
-                        valid_frames += 1
-                        confidence_samples.append(float(np.mean(subject_scores)))
             writer.write(annotated)
-            processed_frames += 1
+            frames.append(
+                FramePose2D(
+                    frame_index=len(frames),
+                    source_frame_index=frame_index,
+                    keypoints=subject_keypoints,
+                    scores=subject_scores,
+                )
+            )
             frame_index += 1
     finally:
         capture.release()
         writer.release()
+
+    return PoseSequence(frames=frames, width=metadata["width"], height=metadata["height"])
+
+
+def analyze_video(input_path: Path, output_path: Path, task_type: TaskType, view: str, settings: Settings, estimator: PoseEstimator) -> object:
+    metadata = read_video_metadata(input_path)
+    sequence = _collect_pose_sequence(input_path, output_path, metadata, settings, estimator)
+
+    angle_samples: list[float] = []
+    confidence_samples: list[float] = []
+    valid_frames = 0
+    processed_frames = sequence.processed_frames
+    side: str | None = None
+    for pose in sequence.frames:
+        if not pose.has_subject:
+            continue
+        subject_keypoints, subject_scores = pose.keypoints, pose.scores
+        if side is None:
+            side = _choose_side(subject_keypoints, subject_scores, task_type, settings.min_keypoint_confidence)
+        if side:
+            angle = _angle_for_frame(subject_keypoints, subject_scores, task_type, side, settings.min_keypoint_confidence)
+            if angle is not None:
+                angle_samples.append(angle)
+                valid_frames += 1
+                confidence_samples.append(float(np.mean(subject_scores)))
 
     if not angle_samples:
         raise ValueError("no usable pose found in video")
