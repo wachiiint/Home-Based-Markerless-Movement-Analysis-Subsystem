@@ -28,6 +28,15 @@
 - Current progress: local web demo and real inference pipeline are implemented; existing API contract tests pass.
 - Remaining: run an end-to-end real-model test with network/model cache available and tune inference speed/thresholds against more movement samples.
 
+### 3D Roadmap Phase A-C (single-camera 3D groundwork)
+
+- Goal: extend the 2D pipeline toward single-camera 3D + CT-driven muscle simulation. Each phase is standalone and not yet wired into `analyze_video`.
+- Phase A (`app/services/pose_sequence.py`, `video_analysis.py`): split `analyze_video` into two passes; pass 1 collects the full-clip main-subject 2D poses into a `PoseSequence`, pass 2 computes angles from it. Behavior/API unchanged.
+- Foot-index bugfix (`app/models/keypoints.py`): the Halpe26 foot indices were shifted by the head/neck/hip block, so ankle tasks measured the angle from the head; corrected to the authoritative order (big_toe 20/21, small_toe 22/23, heel 24/25) and added HEAD/NECK/HIP/NOSE/ELBOW/WRIST constants.
+- Phase B (`app/services/calibration/`, `app/models/calibration.py`): ChArUco-on-A4 calibration. Per-device intrinsics (persisted, resolution-keyed, stale on mismatch) + per-session extrinsics/floor plane; print-verify corrects printer scaling; detection is separated from pose/intrinsic math so metric recovery is testable via synthetic projection. Requires `opencv-contrib-python` (aruco).
+- Phase C (`app/services/lifting/`): Halpe26->H36M17 conversion (mid-spine synthesised), screen-coordinate normalization, a `Lifter` protocol with a `MotionBertAdapter` (ONNX I/O contract, needs weights) and a `StubLifter`, and a pipeline bridging `PoseSequence` -> convert -> normalize -> lift.
+- Remaining: obtain/export MotionBERT ONNX weights; Phase D (wire calibration + lifting into `analyze_video`, compute 3D joint angles, fill `transformation_matrix_6dof`); Phase E (motion export + muscle params schema).
+
 ## Scope Note
 
 ### Browser Video Playback Fix
