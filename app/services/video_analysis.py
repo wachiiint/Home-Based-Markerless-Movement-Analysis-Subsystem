@@ -38,9 +38,13 @@ def _choose_side(keypoints, scores, task_type: TaskType, threshold: float) -> st
     return max(candidates)[1] if candidates else None
 
 
-def _collect_pose_sequence(input_path: Path, output_path: Path, metadata: dict, settings: Settings, estimator: PoseEstimator) -> PoseSequence:
+def _collect_pose_sequence(input_path: Path, output_path: Path, metadata: dict, settings: Settings, estimator: PoseEstimator, frame_observer=None) -> PoseSequence:
     """Pass 1: run 2D inference over sampled frames, write the annotated video,
-    and collect the main-subject 2D pose per frame into a ``PoseSequence``."""
+    and collect the main-subject 2D pose per frame into a ``PoseSequence``.
+
+    ``frame_observer`` (optional) is called with each sampled BGR frame before
+    annotation -- used by the session calibrator to detect the ChArUco board.
+    """
     capture = cv2.VideoCapture(str(input_path))
     writer = cv2.VideoWriter(str(output_path), cv2.VideoWriter_fourcc(*"mp4v"), settings.frame_sample_fps, (metadata["width"], metadata["height"]))
     if not writer.isOpened():
@@ -58,6 +62,8 @@ def _collect_pose_sequence(input_path: Path, output_path: Path, metadata: dict, 
             if frame_index % sample_interval:
                 frame_index += 1
                 continue
+            if frame_observer is not None:
+                frame_observer(frame)
             keypoints, scores = estimator.infer(frame)
             subject = select_main_subject(list(zip(keypoints, scores)))
             annotated = frame.copy()

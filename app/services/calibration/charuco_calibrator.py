@@ -32,19 +32,40 @@ def k_to_list(K: np.ndarray) -> list[float]:
     return [float(K[0, 0]), float(K[1, 1]), float(K[0, 2]), float(K[1, 2])]
 
 
+def detect_charuco(image: np.ndarray, board) -> tuple[np.ndarray | None, np.ndarray | None, int, int]:
+    """Raw detection: (charuco_corners, charuco_ids, n_corners, n_markers).
+
+    Marker/corner counts feed the failure diagnostics even when the pose can't
+    be recovered. Corner detection depends only on the board layout/dictionary,
+    not its physical size, so a unit board is fine here.
+    """
+    detector = cv2.aruco.CharucoDetector(board)
+    charuco_corners, charuco_ids, _marker_corners, marker_ids = detector.detectBoard(image)
+    n_corners = 0 if charuco_ids is None else len(charuco_ids)
+    n_markers = 0 if marker_ids is None else len(marker_ids)
+    return charuco_corners, charuco_ids, n_corners, n_markers
+
+
 def detect_board(image: np.ndarray, board) -> tuple[np.ndarray, np.ndarray, int] | None:
     """Detect the board and return matched (obj_points, img_points, n_corners).
 
     Returns ``None`` when fewer than ``MIN_POSE_CORNERS`` charuco corners match.
     """
-    detector = cv2.aruco.CharucoDetector(board)
-    charuco_corners, charuco_ids, _marker_corners, _marker_ids = detector.detectBoard(image)
-    if charuco_ids is None or len(charuco_ids) < MIN_POSE_CORNERS:
+    charuco_corners, charuco_ids, n_corners, _n_markers = detect_charuco(image, board)
+    if charuco_ids is None or n_corners < MIN_POSE_CORNERS:
         return None
     obj_points, img_points = board.matchImagePoints(charuco_corners, charuco_ids)
     if obj_points is None or len(obj_points) < MIN_POSE_CORNERS:
         return None
-    return obj_points, img_points, len(charuco_ids)
+    return obj_points, img_points, n_corners
+
+
+def pose_from_charuco(charuco_corners, charuco_ids, board, k4, dist):
+    """Recover board pose from raw corners + a metric-scaled board."""
+    obj_points, img_points = board.matchImagePoints(charuco_corners, charuco_ids)
+    if obj_points is None or len(obj_points) < MIN_POSE_CORNERS:
+        raise ValueError("not enough matched corners to recover board pose")
+    return estimate_pose(obj_points, img_points, k4, dist)
 
 
 def calibrate_intrinsics(
