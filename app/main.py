@@ -14,6 +14,8 @@ from app.core.logging import setup_logging
 from app.core.security import require_service_key
 from app.schemas.movement import TaskType
 from app.schemas.response import DemoAssessmentResponse, HealthResponse, MovementAssessmentResponse
+from app.services.calibration.device_store import DeviceStore
+from app.services.lifting.lifter import build_lifter
 from app.services.pose_estimator import RtmlibAdapter
 from app.services.response_mapper import build_fake_response
 from app.services.video_analysis import analyze_video
@@ -50,6 +52,8 @@ async def lifespan(app: FastAPI):
     app.state.device = select_device(settings.device)
     app.state.model_loaded = bool(settings.fake_mode)
     app.state.pose_estimator = None
+    app.state.lifter = None
+    app.state.device_store = None
     app.state.demo_results = {}
     if settings.fake_mode:
         logger.info("FAKE_MODE enabled; skipping pose model load")
@@ -59,11 +63,17 @@ async def lifespan(app: FastAPI):
             app.state.model_loaded = True
         except Exception:
             logger.exception("pose model failed to load")
+        # 3D path (Phase D): lifter is None unless enabled and weights pass the
+        # I/O guard, so analysis degrades to 2D cleanly.
+        app.state.lifter = build_lifter(settings.enable_3d, settings.motionbert_model_path, settings.model_backend)
+        app.state.device_store = DeviceStore(Path(settings.calibration_data_dir))
+    app.state.analysis_mode_available = "3d" if app.state.lifter is not None else "2d"
     logger.info(
-        "startup device=%s model_backend=%s model_loaded=%s",
+        "startup device=%s model_backend=%s model_loaded=%s analysis_mode=%s",
         app.state.device,
         settings.model_backend,
         app.state.model_loaded,
+        app.state.analysis_mode_available,
     )
     yield
 

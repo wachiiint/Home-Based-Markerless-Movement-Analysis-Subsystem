@@ -6,10 +6,15 @@ is MotionBERT, loaded from an ONNX export; ``StubLifter`` exists only so the
 conversion/normalization pipeline can be exercised in tests without weights.
 """
 
+import logging
 from pathlib import Path
 from typing import Protocol
 
 import numpy as np
+
+logger = logging.getLogger(__name__)
+
+_SMOKE_FRAMES = 8
 
 
 class Lifter(Protocol):
@@ -61,3 +66,37 @@ class MotionBertAdapter:
         model_in[0, :, :, 2] = scores
         out = self.session.run(None, {self.input_name: model_in})[0]
         return np.asarray(out[0], dtype=np.float64)
+
+
+def validate_lifter_io(lifter: Lifter) -> None:
+    """Silent-wrong guard: smoke-run the lifter and reject a bad I/O contract.
+
+    Catches ONNX exports whose shape/order differs from the assumed
+    (T, 17, 3) output, which would otherwise pass through as garbage 3D.
+    Raises ValueError on any mismatch.
+    """
+    dummy_2d = np.zeros((_SMOKE_FRAMES, 17, 2), dtype=np.float64)
+    dummy_scores = np.ones((_SMOKE_FRAMES, 17), dtype=np.float64)
+    out = np.asarray(lifter.lift(dummy_2d, dummy_scores))
+    if out.shape != (_SMOKE_FRAMES, 17, 3):
+        raise ValueError(f"lifter output shape {out.shape} != expected {(_SMOKE_FRAMES, 17, 3)}")
+    if not np.isfinite(out).all():
+        raise ValueError("lifter output contains non-finite values")
+
+
+def build_lifter(enable_3d: bool, model_path: str, backend: str = "onnxruntime") -> Lifter | None:
+    """Construct the configured lifter, or ``None`` to signal the 2D fallback.
+
+    Returns ``None`` (never raises) when 3D is disabled, weights are missing, or
+    the model fails the I/O validation guard -- so the caller degrades to 2D
+    cleanly instead of crashing.
+    """
+    if not enable_3d:
+        return None
+    try:
+        lifter = MotionBertAdapter(model_path, backend=backend)
+        validate_lifter_io(lifter)
+        return lifter
+    except Exception:
+        logger.warning("3D lifter unavailable; falling back to 2D", exc_info=True)
+        return None
