@@ -19,13 +19,17 @@ def test_response_mapper_nested_shape():
         flags=[],
     ).model_dump()
 
-    assert set(response) == {
+    assert {
         "session_id",
         "video_metadata",
         "clinical_metrics",
         "screening_result",
         "transformation_matrix_6dof",
-    }
+    } <= set(response)
     assert response["clinical_metrics"]["joint_angles"]["knee_rom_deg"] == 57.2
     assert response["clinical_metrics"]["gait_parameters"] == {}
     assert response["clinical_metrics"]["symmetry_index_score"] is None
+    # Phase D additive fields default to a 2D result
+    assert response["analysis_mode"] == "2d"
+    assert response["clinical_metrics"]["joint_angles_3d"] == {}
+    assert response["transformation_matrix_6dof"] is None

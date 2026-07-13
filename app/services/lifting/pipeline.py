@@ -17,6 +17,7 @@ from app.services.pose_sequence import PoseSequence
 @dataclass
 class Lifted3DSequence:
     keypoints_3d: np.ndarray  # (T, 17, 3) root-relative
+    keypoints_2d_h36m: np.ndarray  # (T, 17, 2) pixel, pre-normalization
     valid_mask: np.ndarray  # (T,) bool: frame had a real detection
     width: int
     height: int
@@ -63,5 +64,9 @@ def lift_pose_sequence(sequence: PoseSequence, lifter: Lifter) -> Lifted3DSequen
             f"lifter returned {keypoints_3d.shape}, expected {(sequence.processed_frames, 17, 3)}"
         )
     return Lifted3DSequence(
-        keypoints_3d=keypoints_3d, valid_mask=valid, width=sequence.width, height=sequence.height
+        keypoints_3d=keypoints_3d,
+        keypoints_2d_h36m=kp17,
+        valid_mask=valid,
+        width=sequence.width,
+        height=sequence.height,
     )

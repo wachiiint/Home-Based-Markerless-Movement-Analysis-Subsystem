@@ -89,7 +89,7 @@ def _cleanup_demo_results() -> None:
         shutil.rmtree(app.state.demo_results.pop(session_id)["directory"], ignore_errors=True)
 
 
-async def _run_real_analysis(file: UploadFile, task_type: TaskType, view: str) -> tuple[MovementAssessmentResponse, Path]:
+async def _run_real_analysis(file: UploadFile, task_type: TaskType, view: str, subject_height_mm: float | None = None) -> tuple[MovementAssessmentResponse, Path]:
     settings = app.state.settings
     if app.state.pose_estimator is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="pose model is not loaded")
@@ -97,7 +97,10 @@ async def _run_real_analysis(file: UploadFile, task_type: TaskType, view: str) -
     try:
         input_path = await save_upload(file, settings.demo_max_upload_mb * 1024 * 1024)
         output_path = input_path.parent / "annotated.mp4"
-        result = analyze_video(input_path, output_path, task_type, view, settings, app.state.pose_estimator)
+        result = analyze_video(
+            input_path, output_path, task_type, view, settings, app.state.pose_estimator,
+            lifter=app.state.lifter, device_store=app.state.device_store, subject_height_mm=subject_height_mm,
+        )
         return result, output_path
     except ValueError as exc:
         if input_path is not None:
@@ -139,6 +142,7 @@ async def assess_movement(
     task_type: TaskType = Form(...),
     view: str = Form(...),
     file: UploadFile = File(...),
+    subject_height_mm: float | None = Form(default=None),
 ) -> MovementAssessmentResponse:
     settings = app.state.settings
     normalized_view = view if view in {"frontal", "lateral"} else "frontal"
@@ -153,7 +157,7 @@ async def assess_movement(
     if settings.fake_mode:
         return build_fake_response(task_type, normalized_view, settings.frame_sample_fps)
     try:
-        result, output_path = await _run_real_analysis(file, task_type, normalized_view)
+        result, output_path = await _run_real_analysis(file, task_type, normalized_view, subject_height_mm)
         shutil.rmtree(output_path.parent, ignore_errors=True)
         return result
     except HTTPException:

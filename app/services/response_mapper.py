@@ -1,5 +1,6 @@
 from uuid import uuid4
 
+from app.models.calibration import BoardDetectionDiagnostics
 from app.models.task_config import TASK_CONFIGS
 from app.schemas.movement import TaskType
 from app.schemas.response import (
@@ -7,6 +8,7 @@ from app.schemas.response import (
     MovementAssessmentResponse,
     PoseQuality,
     ScreeningResult,
+    TransformationMatrix6DoF,
     VideoMetadata,
 )
 
@@ -27,6 +29,13 @@ def build_assessment_response(
     confidence_score: float,
     flags: list[str],
     analyzed_side: str | None = None,
+    analysis_mode: str = "2d",
+    joint_angles_3d: dict[str, float] | None = None,
+    scale_mm_per_unit: float | None = None,
+    scale_source: str | None = None,
+    transformation_6dof: TransformationMatrix6DoF | None = None,
+    board_diagnostics: BoardDetectionDiagnostics | None = None,
+    guard_warnings: list[str] | None = None,
 ) -> MovementAssessmentResponse:
     config = TASK_CONFIGS[task_type]
     rom = round(angle_max - angle_min, 2)
@@ -49,6 +58,9 @@ def build_assessment_response(
         ),
         clinical_metrics=ClinicalMetrics(
             joint_angles=joint_angles,
+            joint_angles_3d=joint_angles_3d or {},
+            scale_mm_per_unit=scale_mm_per_unit,
+            scale_source=scale_source,
             gait_parameters={},
             compensation={},
             smoothness={},
@@ -64,7 +76,10 @@ def build_assessment_response(
             confidence_score=confidence_score,
             flags=flags,
         ),
-        transformation_matrix_6dof=None,
+        transformation_matrix_6dof=transformation_6dof,
+        analysis_mode=analysis_mode,  # type: ignore[arg-type]
+        board_diagnostics=board_diagnostics,
+        guard_warnings=guard_warnings or [],
     )
 
 
