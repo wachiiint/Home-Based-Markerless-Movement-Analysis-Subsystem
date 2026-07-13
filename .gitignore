@@ -4,3 +4,7 @@ __pycache__/
 .pytest_cache/
 .env
 clip.mp4
+
+## local dump: paper, clip, temp
+/dump
+.claude

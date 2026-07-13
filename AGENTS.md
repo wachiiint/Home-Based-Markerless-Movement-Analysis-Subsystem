@@ -40,6 +40,26 @@
 
 V1 is a local decision-support/demo service. It is not a clinical diagnosis system.
 
+### Literature Review and Master Requirement Alignment
+
+- Changed files: `docs/Project101_Team5.md`, `docs/Project101_Team5.pdf` (restored from `main`), `EVALUATION_PLAN.md`.
+- What each file does: `Project101_Team5.md`/`.pdf` is the Team 5 project proposal defining the full
+  clinical feature set and the `clinical_metrics`/`screening_result`/`transformation_matrix_6dof`
+  JSON contract that this service's `app/schemas/response.py` already mirrors in shape (this branch
+  had dropped `docs/` when the RTMPose edition was split out from scratch); `EVALUATION_PLAN.md` now
+  records literature-derived validation risks under "Literature-Informed Validation Risks".
+- What changed: reviewed six published papers on smartphone/webcam movement assessment, pose
+  estimation accuracy, real-time musculoskeletal analysis, and Hill-type muscle model instability
+  (`dump/paper/Lower-limb tele-assessment manuscripts/`), and cross-checked their findings against
+  `app/services/kinematics.py`, `screening.py`, `smoothing.py`, and `app/models/task_config.py`.
+- Current progress: risks and the master requirement doc are documented; no changes to the
+  inference/screening pipeline itself.
+- Remaining: decide whether to add a per-joint/view correction step before
+  `three_point_angle` -> `screen_rom`, and whether/how to empirically validate
+  `expected_rom_deg`/`borderline_rom_deg` in `task_config.py`. The master schema's
+  `gait_parameters`, `compensation`, `smoothness`, and `symmetry_index_score` fields remain
+  intentionally empty/`None` in v1 per `EVALUATION_PLAN.md`.
+
 ## Task Sync Note
 
 The movement task set must stay in sync across three files:
