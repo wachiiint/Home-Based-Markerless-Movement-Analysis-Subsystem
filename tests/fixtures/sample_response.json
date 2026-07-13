@@ -1,0 +1,33 @@
+{
+  "session_id": "rtmpose-00000000-0000-4000-8000-000000000000",
+  "video_metadata": {
+    "duration_sec": 12.4,
+    "fps": 30,
+    "view": "lateral",
+    "task_type": "knee_flexion",
+    "processed_frames": 124,
+    "sampled_fps": 10
+  },
+  "clinical_metrics": {
+    "joint_angles": {
+      "knee_flexion_max_deg": 61.4,
+      "knee_flexion_min_deg": 4.2,
+      "knee_rom_deg": 57.2
+    },
+    "gait_parameters": {},
+    "compensation": {},
+    "smoothness": {},
+    "symmetry_index_score": null,
+    "pose_quality": {
+      "mean_keypoint_confidence": 0.88,
+      "valid_frame_ratio": 0.94,
+      "occlusion_warning": false
+    }
+  },
+  "screening_result": {
+    "risk_level": "low",
+    "confidence_score": 0.82,
+    "flags": []
+  },
+  "transformation_matrix_6dof": null
+}

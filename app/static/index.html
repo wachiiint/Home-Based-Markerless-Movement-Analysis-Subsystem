@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RTMPose Movement Lab</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div><p class="eyebrow">LOCAL MOVEMENT ANALYSIS</p><h1>RTMPose Movement Lab</h1></div>
+      <span class="status-dot"><i></i> Ready for test</span>
+    </header>
+
+    <section class="workspace">
+      <form id="analysis-form" class="panel form-panel">
+        <div class="panel-heading"><div><p class="eyebrow">01 / INPUT</p><h2>Upload movement video</h2></div><span class="step">MP4 · MOV · AVI</span></div>
+        <label>Patient ID<input name="patient_id" value="PT-001" required></label>
+        <div class="two-col">
+          <label>Movement task<select name="task_type"><option value="knee_flexion">Knee flexion</option><option value="knee_extension">Knee extension</option><option value="hip_flexion">Hip flexion</option><option value="hip_extension">Hip extension</option><option value="ankle_dorsiflexion">Ankle dorsiflexion</option><option value="ankle_plantarflexion">Ankle plantarflexion</option></select></label>
+          <label>Camera view<select name="view"><option value="lateral">Lateral</option><option value="frontal">Frontal</option></select></label>
+        </div>
+        <label class="dropzone" for="file"><span class="upload-icon">↑</span><strong id="file-name">Choose a video file</strong><small>Maximum 100 MB</small><input id="file" name="file" type="file" accept="video/mp4,video/quicktime,video/x-msvideo" required></label>
+        <video id="source-video" class="source-video" controls hidden></video>
+        <button id="submit-button" class="primary-button" type="submit"><span>Analyze movement</span><span class="button-arrow">→</span></button>
+        <p id="form-message" class="message" role="alert"></p>
+      </form>
+
+      <section class="panel result-panel">
+        <div class="panel-heading"><div><p class="eyebrow">02 / RESULT</p><h2>Skeleton overlay</h2></div><span id="result-state" class="step">Waiting for video</span></div>
+        <div id="empty-state" class="empty-state"><div class="empty-mark">✦</div><p>Upload a video to see the pose overlay and movement metrics here.</p></div>
+        <video id="result-video" class="result-video" controls playsinline preload="metadata" hidden>
+          <source type="video/mp4">
+        </video>
+        <a id="download-link" class="download-link" download hidden>Download annotated video <span>↓</span></a>
+      </section>
+    </section>
+
+    <section id="metrics-section" class="panel metrics-panel" hidden>
+      <div class="panel-heading"><div><p class="eyebrow">03 / ANALYSIS</p><h2>Movement summary</h2></div><span class="step">Decision support only</span></div>
+      <div class="summary-grid"><div class="risk-card"><span class="metric-label">Screening risk</span><strong id="risk-value">—</strong><small id="risk-flags">No flags</small></div><div><span class="metric-label">Confidence</span><strong id="confidence-value">—</strong></div><div><span class="metric-label">Analyzed side</span><strong id="side-value">—</strong></div><div><span class="metric-label">Valid frame ratio</span><strong id="valid-value">—</strong></div></div>
+      <div class="metric-table" id="angle-metrics"></div>
+      <p class="disclaimer">This local tool is for technical testing and decision support. It is not a clinical diagnosis.</p>
+    </section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>
