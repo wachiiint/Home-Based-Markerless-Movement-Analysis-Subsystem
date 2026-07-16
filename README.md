@@ -60,4 +60,12 @@ The service key is internal only. Never send it to a browser.
 
 The browser page uses the same-origin `/api/demo/assess` endpoint, so it does not need or expose `SERVICE_API_KEY`. It shows the uploaded video, the annotated skeleton video, ROM metrics, pose quality, and screening output. Demo files are temporary and expire after `DEMO_RESULT_TTL_SECONDS` (one hour by default). The generated video is sampled at `FRAME_SAMPLE_FPS` and does not include the original audio.
 
+To run the demo UI (e.g. on port 8002):
+
+```powershell
+uv run uvicorn app.main:app --port 8002
+```
+
+Then open [http://127.0.0.1:8002/](http://127.0.0.1:8002/). Keep `FAKE_MODE=false` in `.env` to run real RTMPose inference.
+
 The UI is a local decision-support demo only. It is not a clinical diagnosis system and should not be exposed directly to the public internet.

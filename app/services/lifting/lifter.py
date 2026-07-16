@@ -44,28 +44,68 @@ class MotionBertAdapter:
     Expected ONNX I/O (validate against the specific export before use):
         input  : float32 [1, T, 17, 3]  -> (x, y, confidence)
         output : float32 [1, T, 17, 3]  -> root-relative 3D
+
+    MotionBERT-Lite has a fixed temporal positional embedding (``max_frames``,
+    default 243). Sequences longer than that cannot be fed in one shot, so
+    ``lift`` runs a sliding window with overlap and blends the overlapping
+    frames (each frame is independently root-relative, so windows compose
+    without alignment).
     """
 
-    def __init__(self, model_path: str, backend: str = "onnxruntime") -> None:
+    def __init__(
+        self,
+        model_path: str,
+        backend: str = "onnxruntime",
+        max_frames: int = 243,
+        overlap: int = 32,
+    ) -> None:
         if not model_path or not Path(model_path).exists():
             raise FileNotFoundError(
                 f"MotionBERT ONNX model not found at {model_path!r}; obtain/export the "
                 "weights and set the path (see Phase C notes)."
             )
+        if overlap >= max_frames:
+            raise ValueError(f"overlap ({overlap}) must be smaller than max_frames ({max_frames})")
         import onnxruntime as ort
 
         self.session = ort.InferenceSession(model_path, providers=["CPUExecutionProvider"])
         self.input_name = self.session.get_inputs()[0].name
+        self.max_frames = max_frames
+        self.overlap = overlap
 
-    def lift(self, normalized_2d: np.ndarray, scores: np.ndarray) -> np.ndarray:
-        normalized_2d = np.asarray(normalized_2d, dtype=np.float32)
-        scores = np.asarray(scores, dtype=np.float32)
+    def _run(self, normalized_2d: np.ndarray, scores: np.ndarray) -> np.ndarray:
+        """Single ONNX pass over a window of at most ``max_frames`` frames."""
         t, j, _ = normalized_2d.shape
         model_in = np.zeros((1, t, j, 3), dtype=np.float32)
         model_in[0, :, :, :2] = normalized_2d
         model_in[0, :, :, 2] = scores
         out = self.session.run(None, {self.input_name: model_in})[0]
         return np.asarray(out[0], dtype=np.float64)
+
+    def lift(self, normalized_2d: np.ndarray, scores: np.ndarray) -> np.ndarray:
+        normalized_2d = np.asarray(normalized_2d, dtype=np.float32)
+        scores = np.asarray(scores, dtype=np.float32)
+        t, j, _ = normalized_2d.shape
+
+        if t <= self.max_frames:
+            return self._run(normalized_2d, scores)
+
+        window = self.max_frames
+        stride = window - self.overlap
+        starts = list(range(0, t - window, stride)) + [t - window]
+
+        acc = np.zeros((t, j, 3), dtype=np.float64)
+        wsum = np.zeros(t, dtype=np.float64)
+        # Hann taper (floored) weights interior frames more so seams blend smoothly
+        # while guaranteeing every frame keeps a non-zero total weight.
+        taper = 0.5 * (1.0 - np.cos(2.0 * np.pi * (np.arange(window) + 1) / (window + 1)))
+        taper = np.maximum(taper, 1e-3)
+        for start in starts:
+            end = start + window
+            out = self._run(normalized_2d[start:end], scores[start:end])
+            acc[start:end] += out * taper[:, None, None]
+            wsum[start:end] += taper
+        return acc / wsum[:, None, None]
 
 
 def validate_lifter_io(lifter: Lifter) -> None:
