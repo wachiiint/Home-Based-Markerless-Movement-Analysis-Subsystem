@@ -22,6 +22,16 @@ H36M_JOINT_NAMES = [
 ]
 NUM_H36M_JOINTS = 17
 
+# Bone connectivity (parent, child) for drawing the skeleton. Order follows the
+# joint layout above: legs off the pelvis, spine up to the head, arms off the thorax.
+H36M_EDGES: list[tuple[int, int]] = [
+    (0, 1), (1, 2), (2, 3),        # right leg
+    (0, 4), (4, 5), (5, 6),        # left leg
+    (0, 7), (7, 8), (8, 9), (9, 10),   # spine -> head
+    (8, 11), (11, 12), (12, 13),   # left arm
+    (8, 14), (14, 15), (15, 16),   # right arm
+]
+
 # H36M joint index -> Halpe26 index (direct copies). Index 7 (spine) is
 # synthesised separately and is intentionally absent here.
 _DIRECT_MAP: dict[int, int] = {

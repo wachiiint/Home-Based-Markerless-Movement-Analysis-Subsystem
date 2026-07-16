@@ -3,10 +3,7 @@ import pytest
 
 from app.models import keypoints as kp
 from app.services.lifting.lifter import StubLifter
-from app.services.lifting.normalize import (
-    denormalize_screen_coordinates,
-    normalize_screen_coordinates,
-)
+from app.services.lifting.normalize import crop_scale
 from app.services.lifting.pipeline import lift_pose_sequence, sequence_to_arrays
 from app.services.lifting.skeleton_convert import (
     NUM_H36M_JOINTS,
@@ -54,18 +51,40 @@ def test_convert_rejects_wrong_shape():
 
 # ---- normalization --------------------------------------------------------
 
-def test_normalize_round_trip():
-    pts = np.array([[[0.0, 0.0], [1280.0, 720.0], [640.0, 360.0]]])
-    norm = normalize_screen_coordinates(pts, 1280, 720)
-    back = denormalize_screen_coordinates(norm, 1280, 720)
-    assert np.allclose(back, pts)
+def test_crop_scale_maps_bounding_box_to_unit_range():
+    # The box's longer side spans [-1, 1]; the subject's position in the frame
+    # must not matter -- only its box. Here the tall side is y (200 vs 100).
+    pts = np.array([[[500.0, 400.0], [600.0, 600.0]]])
+    scores = np.ones((1, 2))
+    norm = crop_scale(pts, scores)
+    assert norm[0, 0, 1] == pytest.approx(-1.0)
+    assert norm[0, 1, 1] == pytest.approx(1.0)
+    # x spans 100 of the 200-unit box -> half the range, centred
+    assert norm[0, 0, 0] == pytest.approx(-0.5)
+    assert norm[0, 1, 0] == pytest.approx(0.5)
 
 
-def test_normalize_x_range():
-    pts = np.array([[[0.0, 0.0], [1280.0, 0.0]]])
-    norm = normalize_screen_coordinates(pts, 1280, 720)
-    assert norm[0, 0, 0] == pytest.approx(-1.0)
-    assert norm[0, 1, 0] == pytest.approx(1.0)
+def test_crop_scale_is_invariant_to_where_the_subject_sits_in_frame():
+    # Same subject, shifted 300px right and 50px down: identical normalization.
+    # This is the property image-based normalization lacked.
+    pts = np.array([[[500.0, 400.0], [600.0, 600.0]]])
+    scores = np.ones((1, 2))
+    shifted = pts + np.array([300.0, 50.0])
+    assert np.allclose(crop_scale(pts, scores), crop_scale(shifted, scores))
+
+
+def test_crop_scale_zeroes_invalid_joints():
+    pts = np.array([[[500.0, 400.0], [600.0, 600.0], [1e4, 1e4]]])
+    scores = np.array([[1.0, 1.0, 0.0]])  # third joint not detected
+    norm = crop_scale(pts, scores)
+    assert norm[0, 2] == pytest.approx([0.0, 0.0])
+    # the invalid joint must not enlarge the box
+    assert norm[0, 1, 1] == pytest.approx(1.0)
+
+
+def test_crop_scale_rejects_all_invalid():
+    with pytest.raises(ValueError):
+        crop_scale(np.zeros((1, 3, 2)), np.zeros((1, 3)))
 
 
 # ---- pipeline (Phase A sequence -> 3D via stub) ---------------------------

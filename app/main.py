@@ -1,3 +1,4 @@
+import json
 import logging
 import shutil
 from contextlib import asynccontextmanager
@@ -18,7 +19,7 @@ from app.services.calibration.device_store import DeviceStore
 from app.services.lifting.lifter import build_lifter
 from app.services.pose_estimator import RtmlibAdapter
 from app.services.response_mapper import build_fake_response
-from app.services.video_analysis import analyze_video
+from app.services.video_analysis import VideoAnalysis, analyze_video
 from app.services.video_io import save_upload, validate_video_upload
 
 logger = logging.getLogger(__name__)
@@ -89,7 +90,7 @@ def _cleanup_demo_results() -> None:
         shutil.rmtree(app.state.demo_results.pop(session_id)["directory"], ignore_errors=True)
 
 
-async def _run_real_analysis(file: UploadFile, task_type: TaskType, view: str, subject_height_mm: float | None = None) -> tuple[MovementAssessmentResponse, Path]:
+async def _run_real_analysis(file: UploadFile, task_type: TaskType, view: str, subject_height_mm: float | None = None, want_pose_3d: bool = False) -> tuple[VideoAnalysis, Path]:
     settings = app.state.settings
     if app.state.pose_estimator is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="pose model is not loaded")
@@ -97,11 +98,12 @@ async def _run_real_analysis(file: UploadFile, task_type: TaskType, view: str, s
     try:
         input_path = await save_upload(file, settings.demo_max_upload_mb * 1024 * 1024)
         output_path = input_path.parent / "annotated.mp4"
-        result = analyze_video(
+        analysis = analyze_video(
             input_path, output_path, task_type, view, settings, app.state.pose_estimator,
             lifter=app.state.lifter, device_store=app.state.device_store, subject_height_mm=subject_height_mm,
+            want_pose_3d=want_pose_3d,
         )
-        return result, output_path
+        return analysis, output_path
     except ValueError as exc:
         if input_path is not None:
             shutil.rmtree(input_path.parent, ignore_errors=True)
@@ -157,9 +159,9 @@ async def assess_movement(
     if settings.fake_mode:
         return build_fake_response(task_type, normalized_view, settings.frame_sample_fps)
     try:
-        result, output_path = await _run_real_analysis(file, task_type, normalized_view, subject_height_mm)
+        analysis, output_path = await _run_real_analysis(file, task_type, normalized_view, subject_height_mm)
         shutil.rmtree(output_path.parent, ignore_errors=True)
-        return result
+        return analysis.response
     except HTTPException:
         raise
 
@@ -182,15 +184,24 @@ async def demo_assess(
     _cleanup_demo_results()
     normalized_view = view if view in {"frontal", "lateral"} else "frontal"
     try:
-        result, output_path = await _run_real_analysis(file, task_type, normalized_view)
+        analysis, output_path = await _run_real_analysis(file, task_type, normalized_view, want_pose_3d=True)
     except HTTPException:
         raise
+    result = analysis.response
     result.video_metadata.task_type = task_type.value
     expires_at = datetime.now(timezone.utc) + timedelta(seconds=settings.demo_result_ttl_seconds)
     app.state.demo_results[result.session_id] = {"directory": output_path.parent, "expires_at": expires_at}
+
+    pose_3d_url = None
+    if analysis.pose_3d is not None:
+        # Served as a file next to annotated.mp4 so it shares the same TTL cleanup.
+        (output_path.parent / "pose3d.json").write_text(json.dumps(analysis.pose_3d), encoding="utf-8")
+        pose_3d_url = f"/api/demo/results/{result.session_id}/pose3d.json"
+
     return DemoAssessmentResponse(
         assessment=result,
         annotated_video_url=f"/api/demo/results/{result.session_id}/annotated.mp4",
+        pose_3d_url=pose_3d_url,
         expires_at=expires_at.isoformat(),
     )
 
@@ -210,3 +221,15 @@ async def demo_result_video(session_id: str):
         filename=f"{session_id}-annotated.mp4",
         content_disposition_type="inline",
     )
+
+
+@app.get("/api/demo/results/{session_id}/pose3d.json", include_in_schema=False)
+async def demo_result_pose3d(session_id: str):
+    _cleanup_demo_results()
+    item = app.state.demo_results.get(session_id)
+    if not item:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="result expired or not found")
+    path = item["directory"] / "pose3d.json"
+    if not path.exists():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="3d pose data not found")
+    return FileResponse(path, media_type="application/json")

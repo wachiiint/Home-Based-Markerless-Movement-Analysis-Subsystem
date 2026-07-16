@@ -43,7 +43,22 @@
       <div class="metric-table" id="angle-metrics"></div>
       <p class="disclaimer">This local tool is for technical testing and decision support. It is not a clinical diagnosis.</p>
     </section>
+
+    <section id="viewer-section" class="panel viewer-panel" hidden>
+      <div class="panel-heading"><div><p class="eyebrow">04 / 3D</p><h2>Lifted 3D skeleton</h2></div><span id="viewer-state" class="step">—</span></div>
+      <p id="viewer-warning" class="viewer-warning" hidden></p>
+      <div id="viewer-canvas" class="viewer-canvas"></div>
+      <div class="viewer-controls">
+        <button id="viewer-play" class="ghost-button" type="button">Play</button>
+        <input id="viewer-frame" type="range" min="0" max="0" value="0" step="1">
+        <span id="viewer-frame-label" class="metric-label">0 / 0</span>
+      </div>
+      <p class="disclaimer">Drag to rotate, scroll to zoom. Reconstructed from a single camera: shape is relative, not measured in millimetres.</p>
+    </section>
   </main>
-  <script src="/static/app.js"></script>
+  <script type="importmap">
+    { "imports": { "three": "/static/vendor/three.module.min.js" } }
+  </script>
+  <script type="module" src="/static/app.js"></script>
 </body>
 </html>
