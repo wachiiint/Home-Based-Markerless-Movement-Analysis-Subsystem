@@ -1,4 +1,4 @@
-from app.services.kinematics import range_of_motion
+from app.services.analysis.kinematics import range_of_motion
 
 
 def aggregate_rom(angle_series: list[float]) -> dict[str, float]:

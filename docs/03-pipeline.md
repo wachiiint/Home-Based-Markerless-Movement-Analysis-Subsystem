@@ -103,8 +103,8 @@ PoseSequence: 2D pose of a single person per frame (T frames)   ◀── the ce
 
 | Structure | File | Meaning |
 |-----------|------|---------|
-| `FramePose2D` | [pose_sequence.py](app/services/pose_sequence.py) | 2D pose of the main person for 1 frame (keypoints, scores, or None if no person is found) |
-| `PoseSequence` | [pose_sequence.py](app/services/pose_sequence.py) | all frames combined + the video's width/height |
+| `FramePose2D` | [pose_sequence.py](app/services/pose/pose_sequence.py) | 2D pose of the main person for 1 frame (keypoints, scores, or None if no person is found) |
+| `PoseSequence` | [pose_sequence.py](app/services/pose/pose_sequence.py) | all frames combined + the video's width/height |
 | `Lifted3DSequence` | [lifting/pipeline.py](app/services/lifting/pipeline.py) | 3D keypoints (T,17,3) + a mask of which frames are real |
 | `CameraCalibration` | [models/calibration.py](app/models/calibration.py) | intrinsics K, distortion, floor plane, board pose |
 | `MovementAssessmentResponse` | [schemas/response.py](app/schemas/response.py) | the JSON contract returned to the caller |
@@ -136,7 +136,7 @@ File: `_collect_pose_sequence()` in [video_analysis.py](app/services/video_analy
 
 ### 3.4 Risk Screening
 
-File: [screening.py](app/services/screening.py)
+File: [screening.py](app/services/analysis/screening.py)
 
 ```
 if valid_frame_ratio is low  → flag "low_valid_frame_ratio"

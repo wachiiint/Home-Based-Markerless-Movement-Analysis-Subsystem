@@ -12,9 +12,11 @@
 - `app/main.py`: FastAPI app, lifespan (model/mode selection at startup), routes, exception handlers.
 - `app/core/`: settings (`config.py`), security/auth (`security.py`), logging.
 - `app/schemas/`: request enums and response models (the API contract lives in `response.py`).
-- `app/services/`: the pipeline — video I/O, pose estimation, kinematics, quality, screening, and
-  response mapping. Sub-packages: `calibration/` (ChArUco board → camera intrinsics/floor plane) and
-  `lifting/` (2D→3D via MotionBERT).
+- `app/services/`: the pipeline. Top level: `video_io.py` (input boundary), `video_analysis.py`
+  (orchestrator), `response_mapper.py` (contract mapping). Sub-packages: `pose/` (estimator,
+  sequence, subject selection, tracking, detector), `analysis/` (kinematics, smoothing, screening,
+  quality, task analyzers — shared 2D math), `calibration/` (ChArUco board → camera intrinsics/floor
+  plane), and `lifting/` (2D→3D via MotionBERT).
 - `app/models/`: keypoint constants (`keypoints.py`) and per-task configuration (`task_config.py`).
 - `app/utils/`: math and file helpers.
 - `tests/`: API contract, auth, response mapper, kinematics, calibration, and lifting tests.

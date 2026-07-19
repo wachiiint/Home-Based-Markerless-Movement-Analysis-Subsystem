@@ -11,7 +11,7 @@ import numpy as np
 from app.services.lifting.lifter import Lifter
 from app.services.lifting.normalize import crop_scale
 from app.services.lifting.skeleton_convert import halpe26_to_h36m17
-from app.services.pose_sequence import PoseSequence
+from app.services.pose.pose_sequence import PoseSequence
 
 
 @dataclass

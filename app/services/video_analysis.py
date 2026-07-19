@@ -12,18 +12,18 @@ from app.schemas.movement import TaskType
 from app.services.calibration.device_id import extract_capture_metadata
 from app.services.calibration.session import SessionCalibrator
 from app.services.calibration.transform import camera_to_floor_6dof
-from app.services.kinematics import three_point_angle, range_of_motion
+from app.services.analysis.kinematics import three_point_angle, range_of_motion
 from app.services.lifting.angles_3d import angle_series_3d, supports_3d_angle
 from app.services.lifting.guards import bone_length_consistency
 from app.services.lifting.metric_scale import resolve_metric_scale
 from app.services.lifting.pipeline import lift_pose_sequence
 from app.services.lifting.pose3d_export import build_pose3d_payload
-from app.services.pose_estimator import PoseEstimator
-from app.services.pose_sequence import FramePose2D, PoseSequence
+from app.services.pose.pose_estimator import PoseEstimator
+from app.services.pose.pose_sequence import FramePose2D, PoseSequence
 from app.services.response_mapper import build_assessment_response
-from app.services.screening import screen_rom
-from app.services.smoothing import exponential_moving_average
-from app.services.subject_selector import select_main_subject
+from app.services.analysis.screening import screen_rom
+from app.services.analysis.smoothing import exponential_moving_average
+from app.services.pose.subject_selector import select_main_subject
 from app.services.video_io import read_video_metadata
 
 logger = logging.getLogger(__name__)

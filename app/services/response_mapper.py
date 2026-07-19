@@ -68,7 +68,7 @@ def build_assessment_response(
             pose_quality=PoseQuality(
                 mean_keypoint_confidence=mean_keypoint_confidence,
                 valid_frame_ratio=valid_frame_ratio,
-                occlusion_warning=valid_frame_ratio < 0.8,
+                occlusion_warning=valid_frame_ratio < 0.8, #TODO: Questionable ?
             ),
         ),
         screening_result=ScreeningResult(

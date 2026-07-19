@@ -7,7 +7,7 @@ names are resolved against the H36M17 layout via ``H36M17_LEG``.
 
 from app.models.task_config import TASK_CONFIGS
 from app.schemas.movement import TaskType
-from app.services.kinematics import three_point_angle_3d
+from app.services.analysis.kinematics import three_point_angle_3d
 
 # task joint name -> H36M17 index, per side. No toe here (H36M17 lacks it), so
 # ankle tasks (ray_b = big_toe) are intentionally unsupported in 3D.
