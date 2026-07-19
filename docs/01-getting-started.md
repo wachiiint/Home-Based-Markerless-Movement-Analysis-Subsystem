@@ -123,16 +123,95 @@ The full request/response shape is documented in [04-api-contract.md](04-api-con
 ## Enabling 3D (optional)
 
 3D lifting is off by default and is **best-effort**: if weights, the calibration board, or the
-safety guards are missing, the service silently falls back to the 2D result. To turn it on:
+safety guards are missing, the service silently falls back to the 2D result.
+
+The 3D lifter uses **MotionBERT-Lite**, but the authors publish **PyTorch** weights, not ONNX — so
+this is a one-time *download → export → enable* you run yourself. Everything lives under `models/`
+(which is gitignored, so none of it is committed).
+
+### Step 1 — Get the model source and weights
+
+```powershell
+# MotionBERT source (needed for the model definition used during export)
+git clone https://github.com/Walter0807/MotionBERT.git models/MotionBERT
+
+# The lite, H36M-fine-tuned checkpoint (~64 MB) into the folder its loader expects
+$ckpt = "models/MotionBERT/checkpoint/pose3d/FT_MB_lite_MB_ft_h36m_global_lite"
+New-Item -ItemType Directory -Force $ckpt
+curl.exe -L -o "$ckpt/best_epoch.bin" `
+  https://huggingface.co/walterzhu/MotionBERT/resolve/main/checkpoint/pose3d/FT_MB_lite_MB_ft_h36m_global_lite/best_epoch.bin
+```
+
+### Step 2 — Install the export-only dependencies
+
+PyTorch and ONNX are heavy and are **only** needed for this one-time export, so they are not part of
+the project's locked dependencies. Install them ad hoc (a CPU build is fine):
+
+```powershell
+uv pip install torch onnx
+```
+
+### Step 3 — Export to ONNX
+
+Save this as `models/export_motionbert.py`, then run it from the project root. It loads the
+checkpoint with MotionBERT's own model builder and writes `models/motionbert_lite.onnx` with the
+exact I/O this service expects: input/output `float32 [1, T, 17, 3]` where the three channels are
+`(x, y, confidence)` and `T <= 243`.
+
+```python
+"""One-time export: MotionBERT-Lite (H36M 3D) -> ONNX for the 3D lifting path."""
+import sys
+from pathlib import Path
+
+import torch
+
+REPO = Path("models/MotionBERT")
+sys.path.insert(0, str(REPO))
+from lib.utils.tools import get_config          # noqa: E402  (MotionBERT source)
+from lib.utils.learning import load_backbone    # noqa: E402
+
+CONFIG = REPO / "configs/pose3d/MB_ft_h36m_global_lite.yaml"
+CKPT = REPO / "checkpoint/pose3d/FT_MB_lite_MB_ft_h36m_global_lite/best_epoch.bin"
+OUT = Path("models/motionbert_lite.onnx")
+
+args = get_config(str(CONFIG))
+model = load_backbone(args)                      # DSTformer-lite: dim_feat=256, depth=5, maxlen=243
+state = torch.load(CKPT, map_location="cpu")["model_pos"]
+model.load_state_dict({k.replace("module.", ""): v for k, v in state.items()}, strict=True)
+model.eval()
+
+dummy = torch.randn(1, 243, 17, 3)               # (batch, frames<=243, joints, x/y/confidence)
+torch.onnx.export(
+    model, dummy, str(OUT),
+    input_names=["input"], output_names=["output"],
+    dynamic_axes={"input": {1: "frames"}, "output": {1: "frames"}},  # variable clip length
+    opset_version=17,
+)
+print(f"wrote {OUT} ({OUT.stat().st_size / 1e6:.1f} MB)")
+```
+
+```powershell
+uv run python models/export_motionbert.py
+```
+
+### Step 4 — Turn 3D on
 
 ```env
 ENABLE_3D=true
 MOTIONBERT_MODEL_PATH=models/motionbert_lite.onnx
 ```
 
-Model weights are **not** committed to the repo (`models/` and `*.onnx` are gitignored) — obtain or
-export them separately. See [03-pipeline.md](03-pipeline.md) for how the 3D path works and what a
-metric 3D result additionally requires (a calibrated ChArUco board in frame).
+Restart the service. On startup it smoke-tests the export with `validate_lifter_io()`: if the ONNX
+I/O shapes don't match, 3D is **rejected** and the service falls back to 2D rather than producing
+silent garbage — so a bad export can't corrupt results, it just disables 3D. Watch the startup log
+for `analysis_mode=3d` to confirm it loaded.
+
+> This ONNX export has not been verified on this machine — it follows MotionBERT's documented
+> model-loading path. If `load_state_dict` errors on a key mismatch, the checkpoint or config
+> version has drifted; re-check the folder names in Step 1 against the current MotionBERT repo.
+
+See [03-pipeline.md](03-pipeline.md) for how the 3D path works and what a *metric* 3D result
+additionally requires (a calibrated ChArUco board in frame).
 
 ---
 

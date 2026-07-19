@@ -17,7 +17,7 @@ from app.schemas.movement import TaskType
 from app.schemas.response import DemoAssessmentResponse, HealthResponse, MovementAssessmentResponse
 from app.services.calibration.device_store import DeviceStore
 from app.services.lifting.lifter import build_lifter
-from app.services.pose_estimator import RtmlibAdapter
+from app.services.pose.pose_estimator import RtmlibAdapter
 from app.services.response_mapper import build_fake_response
 from app.services.video_analysis import VideoAnalysis, analyze_video
 from app.services.video_io import save_upload, validate_video_upload
