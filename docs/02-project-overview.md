@@ -13,6 +13,24 @@ returns the **same JSON contract** the main backend already expects.
 
 ---
 
+## Vision / north star (beyond v1)
+
+The screening numbers are the foundation, but the intended *differentiators* — what makes this
+project valuable to a doctor — are visual and longitudinal:
+
+1. **3D movement viewer (Three.js).** Let a doctor *see* the patient's movement pattern in 3D, not
+   just read angle numbers. This is the one piece already prototyped (the demo viewer, display-only).
+2. **CT-derived muscle mass overlay.** Import CT-scan muscle data from a partner team and overlay it
+   on the motion, connecting *how the patient moves* to *the underlying muscle*.
+3. **Before/after comparison for the same patient.** Compare two sessions of one patient to visualise
+   rehabilitation progress over time.
+
+Scope note: v1 ships the 2D screening pipeline plus the display-only 3D viewer. The CT muscle overlay
+and before/after comparison are **roadmap** (the "Phase E" direction in `../AGENTS.md`); their
+detailed plan belongs in [06-implementation-plan.md](06-implementation-plan.md) when work starts.
+
+---
+
 ## Where it fits in the bigger system
 
 This service is **one microservice**. It never talks to the patient directly — the main backend

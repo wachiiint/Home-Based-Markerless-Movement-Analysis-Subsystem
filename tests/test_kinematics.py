@@ -1,4 +1,4 @@
-from app.services.kinematics import range_of_motion, three_point_angle
+from app.services.analysis.kinematics import range_of_motion, three_point_angle
 
 
 def test_three_point_angle_right_angle():

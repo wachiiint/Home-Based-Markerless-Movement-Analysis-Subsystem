@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 
 from app.schemas.movement import TaskType
-from app.services.kinematics import three_point_angle_3d
+from app.services.analysis.kinematics import three_point_angle_3d
 from app.services.lifting.angles_3d import angle_series_3d, supports_3d_angle
 
 
