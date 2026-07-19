@@ -27,7 +27,7 @@ This is a scoped subset of the schema defined in `docs/Project101_Team5.md` (the
 proposal's master doctor-facing output spec). The response shape (`app/schemas/response.py`)
 already includes `gait_parameters`, `compensation`, `smoothness`, `symmetry_index_score`, and
 `transformation_matrix_6dof` to match that schema, but these fields are empty/`None` in v1 — only
-`joint_angles` and `pose_quality` are populated (see `EVALUATION_PLAN.md`).
+`joint_angles` and `pose_quality` are populated (see `05-evaluation-plan.md`).
 
 ## `GET /health`
 
