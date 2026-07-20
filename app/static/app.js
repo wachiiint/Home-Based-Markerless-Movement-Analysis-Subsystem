@@ -1,4 +1,5 @@
 import { mountViewer } from '/static/viewer3d.js';
+import { buildSamplePose3dPayload } from '/static/sample_skeleton.js';
 
 const form = document.querySelector('#analysis-form');
 const fileInput = document.querySelector('#file');
@@ -62,6 +63,26 @@ frameSlider.addEventListener('input', () => {
   stopPlayback();
   viewer.setFrame(Number(frameSlider.value));
   updateFrameLabel();
+});
+
+// DEV/PREVIEW: feed a synthetic walking skeleton into the 04/3D viewer so it can
+// be seen before real MotionBERT weights exist. Remove together with
+// sample_skeleton.js and the #preview-3d button in index.html.
+document.querySelector('#preview-3d').addEventListener('click', () => {
+  stopPlayback();
+  const payload = buildSamplePose3dPayload();
+  viewerSection.hidden = false;
+  if (!viewer) viewer = mountViewer(document.querySelector('#viewer-canvas'));
+  const count = viewer.load(payload);
+  viewer.fps = payload.fps;
+  frameSlider.max = Math.max(0, count - 1);
+  frameSlider.value = 0;
+  updateFrameLabel();
+  viewerState.textContent = 'Sample data (synthetic)';
+  viewerWarning.hidden = false;
+  viewerWarning.textContent = 'Synthetic preview — not a real analysis. Shows how the viewer renders while waiting for the MotionBERT weights.';
+  viewerSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  playButton.click(); // autoplay
 });
 
 async function showPose3d(url) {

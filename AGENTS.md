@@ -35,7 +35,10 @@ The orchestrator is `app/services/video_analysis.py`. For the full data flow, re
   (`gait_parameters`, `compensation`, `smoothness`, `symmetry_index_score`) exist in the schema but
   stay empty/`None` — see [docs/05-evaluation-plan.md](docs/05-evaluation-plan.md).
 - **3D weights are not committed** (`models/`, `*.onnx` are gitignored). 3D stays off until weights
-  are provided via `ENABLE_3D` + `MOTIONBERT_MODEL_PATH`. `StubLifter` is for tests only.
+  are provided via `ENABLE_3D` + `MOTIONBERT_MODEL_PATH`. `StubLifter` is for tests only. The
+  expected ONNX is MotionBERT-Lite with I/O `float32 [1, T, 17, 3]` (x, y, confidence); a one-time
+  PyTorch→ONNX export procedure is in [docs/01-getting-started.md](docs/01-getting-started.md)
+  ("Enabling 3D"). `build_lifter` + `validate_lifter_io` reject a mismatched export and fall back to 2D.
 - **V1 is a local decision-support / demo service — not a clinical diagnosis system.** Be cautious
   about changing screening thresholds or angle math; see the validation risks in
   [docs/05-evaluation-plan.md](docs/05-evaluation-plan.md).
