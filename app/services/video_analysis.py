@@ -12,17 +12,18 @@ from app.schemas.movement import TaskType
 from app.services.calibration.device_id import extract_capture_metadata
 from app.services.calibration.session import SessionCalibrator
 from app.services.calibration.transform import camera_to_floor_6dof
-from app.services.kinematics import three_point_angle, range_of_motion
+from app.services.analysis.kinematics import three_point_angle, range_of_motion
 from app.services.lifting.angles_3d import angle_series_3d, supports_3d_angle
 from app.services.lifting.guards import bone_length_consistency
 from app.services.lifting.metric_scale import resolve_metric_scale
 from app.services.lifting.pipeline import lift_pose_sequence
-from app.services.pose_estimator import PoseEstimator
-from app.services.pose_sequence import FramePose2D, PoseSequence
+from app.services.lifting.pose3d_export import build_pose3d_payload
+from app.services.pose.pose_estimator import PoseEstimator
+from app.services.pose.pose_sequence import FramePose2D, PoseSequence
 from app.services.response_mapper import build_assessment_response
-from app.services.screening import screen_rom
-from app.services.smoothing import exponential_moving_average
-from app.services.subject_selector import select_main_subject
+from app.services.analysis.screening import screen_rom
+from app.services.analysis.smoothing import exponential_moving_average
+from app.services.pose.subject_selector import select_main_subject
 from app.services.video_io import read_video_metadata
 
 logger = logging.getLogger(__name__)
@@ -115,47 +116,77 @@ class _ThreeDResult:
     transformation_6dof: object | None = None
     board_diagnostics: object | None = None
     guard_warnings: list = field(default_factory=list)
+    pose_3d: dict | None = None
 
 
-def _augment_with_3d(sequence, task_type, side, settings, lifter, calibrator, device_meta, subject_height_mm) -> _ThreeDResult:
-    """Best-effort 3D metrics. Never raises: any failure returns a 2D result so
-    the endpoint always responds (falls back to the 2D analysis)."""
+def _augment_with_3d(
+    sequence, task_type, side, settings, lifter, calibrator, device_meta, subject_height_mm, want_pose_3d=False
+) -> _ThreeDResult:
+    """Best-effort 3D. Never raises: any failure returns a 2D result so the
+    endpoint always responds (falls back to the 2D analysis).
+
+    Two separable outputs come from one lift:
+
+    * ``pose_3d`` -- root-relative coordinates for the demo viewer. Needs only
+      the lifter, no board, and is produced solely when ``want_pose_3d`` is set
+      (it is display-only, so the clinical endpoint does not pay for the lift).
+    * metric 3D (``joint_angles_3d``, scale, 6DoF) -- additionally requires a
+      calibrated board and a task whose angle is defined in 3D.
+    """
     result = _ThreeDResult()
-    if calibrator is None or lifter is None:
+    if lifter is None:
         return result
     try:
-        calibration, diagnostics = calibrator.finalize(device_meta, (sequence.width, sequence.height))
-        result.board_diagnostics = diagnostics
-        result.transformation_6dof = camera_to_floor_6dof(calibration)
-        if calibration is not None:
-            result.guard_warnings += list(calibration.warnings)
-        if calibration is None or not calibration.ok:
+        calibration = None
+        if calibrator is not None:
+            calibration, diagnostics = calibrator.finalize(device_meta, (sequence.width, sequence.height))
+            result.board_diagnostics = diagnostics
+            result.transformation_6dof = camera_to_floor_6dof(calibration)
+            if calibration is not None:
+                result.guard_warnings += list(calibration.warnings)
+
+        metric_possible = (
+            calibration is not None
+            and calibration.ok
+            and supports_3d_angle(task_type)  # calibrated but e.g. ankle -> angles stay 2D
+            and side is not None
+        )
+        if not (want_pose_3d or metric_possible):
             return result
-        if not supports_3d_angle(task_type) or side is None:
-            return result  # calibrated, but angles stay 2D (e.g. ankle)
 
         lifted = lift_pose_sequence(sequence, lifter)
-        ok, _cv, bone_warnings = bone_length_consistency(lifted.keypoints_3d, lifted.valid_mask)
+        lift_ok, _cv, bone_warnings = bone_length_consistency(lifted.keypoints_3d, lifted.valid_mask)
         result.guard_warnings += bone_warnings
-        if not ok:
-            return result  # unreliable lift -> keep 2D angles
 
-        angles = angle_series_3d(lifted.keypoints_3d, task_type, side)
-        smoothed = exponential_moving_average(angles, settings.smoothing_alpha)
-        min_a, max_a, rom = range_of_motion(smoothed)
-        config = TASK_CONFIGS[task_type]
-        result.joint_angles_3d = {
-            f"{config.max_key}_3d": round(max_a, 2),
-            f"{config.min_key}_3d": round(min_a, 2),
-            f"{config.rom_key}_3d": rom,
-        }
-        scale, scale_source, scale_warnings = resolve_metric_scale(
-            lifted.keypoints_2d_h36m, lifted.keypoints_3d, lifted.valid_mask, calibration, subject_height_mm,
-        )
-        result.scale_mm_per_unit = scale
-        result.scale_source = scale_source
-        result.guard_warnings += scale_warnings
-        result.analysis_mode = "3d"
+        if metric_possible and lift_ok:
+            angles = angle_series_3d(lifted.keypoints_3d, task_type, side)
+            smoothed = exponential_moving_average(angles, settings.smoothing_alpha)
+            min_a, max_a, rom = range_of_motion(smoothed)
+            config = TASK_CONFIGS[task_type]
+            result.joint_angles_3d = {
+                f"{config.max_key}_3d": round(max_a, 2),
+                f"{config.min_key}_3d": round(min_a, 2),
+                f"{config.rom_key}_3d": rom,
+            }
+            scale, scale_source, scale_warnings = resolve_metric_scale(
+                lifted.keypoints_2d_h36m, lifted.keypoints_3d, lifted.valid_mask, calibration, subject_height_mm,
+            )
+            result.scale_mm_per_unit = scale
+            result.scale_source = scale_source
+            result.guard_warnings += scale_warnings
+            result.analysis_mode = "3d"
+
+        if want_pose_3d:
+            # Shown even when the guard rejects the lift, flagged so the viewer
+            # can warn: it is a picture, not a clinical number.
+            result.pose_3d = build_pose3d_payload(
+                lifted,
+                sampled_fps=settings.frame_sample_fps,
+                analyzed_side=side,
+                lift_reliable=lift_ok,
+                lift_warnings=bone_warnings,
+                analysis_mode=result.analysis_mode,
+            )
     except Exception:
         logger.exception("3D augmentation failed; using 2D result")
         result.analysis_mode = "2d"
@@ -163,7 +194,17 @@ def _augment_with_3d(sequence, task_type, side, settings, lifter, calibrator, de
     return result
 
 
-def analyze_video(input_path: Path, output_path: Path, task_type: TaskType, view: str, settings: Settings, estimator: PoseEstimator, lifter=None, device_store=None, subject_height_mm: float | None = None) -> object:
+@dataclass
+class VideoAnalysis:
+    """Analysis output. ``pose_3d`` is the demo viewer's display payload and is
+    deliberately kept beside the response rather than inside it, so the clinical
+    contract carries no raw coordinates."""
+
+    response: object
+    pose_3d: dict | None = None
+
+
+def analyze_video(input_path: Path, output_path: Path, task_type: TaskType, view: str, settings: Settings, estimator: PoseEstimator, lifter=None, device_store=None, subject_height_mm: float | None = None, want_pose_3d: bool = False) -> VideoAnalysis:
     metadata = read_video_metadata(input_path)
     calibrator = SessionCalibrator(device_store) if (lifter is not None and device_store is not None) else None
     observer = calibrator.observe if calibrator is not None else None
@@ -204,9 +245,11 @@ def analyze_video(input_path: Path, output_path: Path, task_type: TaskType, view
     )
 
     device_meta = extract_capture_metadata(input_path)
-    three_d = _augment_with_3d(sequence, task_type, side, settings, lifter, calibrator, device_meta, subject_height_mm)
+    three_d = _augment_with_3d(
+        sequence, task_type, side, settings, lifter, calibrator, device_meta, subject_height_mm, want_pose_3d,
+    )
 
-    return build_assessment_response(
+    response = build_assessment_response(
         task_type=task_type,
         view=view,
         duration_sec=metadata["duration_sec"],
@@ -229,3 +272,4 @@ def analyze_video(input_path: Path, output_path: Path, task_type: TaskType, view
         board_diagnostics=three_d.board_diagnostics,
         guard_warnings=three_d.guard_warnings,
     )
+    return VideoAnalysis(response=response, pose_3d=three_d.pose_3d)

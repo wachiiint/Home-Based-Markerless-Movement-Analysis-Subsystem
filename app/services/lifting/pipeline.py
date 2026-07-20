@@ -9,9 +9,9 @@ from dataclasses import dataclass
 import numpy as np
 
 from app.services.lifting.lifter import Lifter
-from app.services.lifting.normalize import normalize_screen_coordinates
+from app.services.lifting.normalize import crop_scale
 from app.services.lifting.skeleton_convert import halpe26_to_h36m17
-from app.services.pose_sequence import PoseSequence
+from app.services.pose.pose_sequence import PoseSequence
 
 
 @dataclass
@@ -55,7 +55,7 @@ def lift_pose_sequence(sequence: PoseSequence, lifter: Lifter) -> Lifted3DSequen
         raise ValueError("no usable pose found in sequence")
 
     kp17, sc17 = halpe26_to_h36m17(keypoints, scores)
-    normalized = normalize_screen_coordinates(kp17, sequence.width, sequence.height)
+    normalized = crop_scale(kp17, sc17)
     keypoints_3d = lifter.lift(normalized, sc17)
 
     keypoints_3d = np.asarray(keypoints_3d, dtype=np.float64)

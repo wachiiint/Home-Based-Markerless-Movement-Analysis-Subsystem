@@ -4,7 +4,7 @@ from app.core.config import Settings
 from app.models.calibration import BoardDetectionDiagnostics, CameraCalibration, FloorPlane
 from app.schemas.movement import TaskType
 from app.services.lifting.lifter import StubLifter
-from app.services.pose_sequence import FramePose2D, PoseSequence
+from app.services.pose.pose_sequence import FramePose2D, PoseSequence
 from app.services.video_analysis import _augment_with_3d
 
 SETTINGS = Settings()

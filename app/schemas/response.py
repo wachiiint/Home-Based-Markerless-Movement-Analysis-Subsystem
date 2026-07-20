@@ -69,4 +69,6 @@ class HealthResponse(BaseModel):
 class DemoAssessmentResponse(BaseModel):
     assessment: MovementAssessmentResponse
     annotated_video_url: str
+    # Lazily fetched by the 3D viewer; null when the lifter is off/unavailable.
+    pose_3d_url: str | None = None
     expires_at: str

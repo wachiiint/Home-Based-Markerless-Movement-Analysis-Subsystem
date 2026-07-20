@@ -12,7 +12,7 @@ def screen_rom(
         flags.append("low_valid_frame_ratio")
     if mean_keypoint_confidence < 0.5:
         flags.append("low_keypoint_confidence")
-
+    # TODO: screening here + ML ?
     if flags or rom_deg < borderline_rom_deg:
         risk = "high"
     elif rom_deg < expected_rom_deg:

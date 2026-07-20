@@ -26,7 +26,7 @@ simulation, and Hill-type muscle model instability). Findings relevant to this s
 - **Raw 2D joint angles carry systematic, joint-specific bias.** DRome (BioRob 2024) found
   uncorrected MoveNet joint angles had RMSE 7.3-15.7° vs. Vicon; error only fell below the ~6°
   clinical-acceptability bar after fitting a per-joint, per-movement regression correction. This
-  service's `app/services/kinematics.py::three_point_angle` computes angles directly from RTMPose
+  service's `app/services/analysis/kinematics.py::three_point_angle` computes angles directly from RTMPose
   keypoints with no such correction, and `screening.py::screen_rom` compares the raw value against
   fixed thresholds in `app/models/task_config.py`.
 - **ROM peak detection is most unreliable at end-of-range.** The PLOS ONE BlazePose ROM study found
