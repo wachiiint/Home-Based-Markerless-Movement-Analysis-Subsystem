@@ -61,9 +61,9 @@ def build_assessment_response(
             joint_angles_3d=joint_angles_3d or {},
             scale_mm_per_unit=scale_mm_per_unit,
             scale_source=scale_source,
-            gait_parameters={},
-            compensation={},
-            smoothness={},
+            gait_parameters={}, #TODO: must fill to complete project ?!?
+            compensation={}, #TODO: must fill to complete project ?!?
+            smoothness={}, #TODO: must fill to complete project ?!?
             symmetry_index_score=None,
             pose_quality=PoseQuality(
                 mean_keypoint_confidence=mean_keypoint_confidence,
