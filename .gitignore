@@ -10,8 +10,8 @@ clip2.mp4
 /dump
 .claude
 data/
-# model weights (large binaries — keep out of git)
-models/
-*.onnx
-*.onnx.data
+
+# model weights
+models/*.onnx
+models/*.onnx.data
 *.bin
