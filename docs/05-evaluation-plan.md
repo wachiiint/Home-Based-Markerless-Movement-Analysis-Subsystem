@@ -55,3 +55,4 @@ simulation, and Hill-type muscle model instability). Findings relevant to this s
 
 See `docs/Project101_Team5.md` for the master clinical feature/output requirement (the doctor-facing
 `clinical_metrics` schema this service's `app/schemas/response.py` already mirrors in shape).
+ 

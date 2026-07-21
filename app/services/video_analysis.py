@@ -39,15 +39,46 @@ def _angle_for_frame(keypoints, scores, task_type: TaskType, side: str, threshol
     return three_point_angle(points[1], points[0], points[2])
 
 
-def _choose_side(keypoints, scores, task_type: TaskType, threshold: float) -> str | None:
-    candidates = []
+# Below this, the two legs' motion is treated as a tie and the side is decided
+# by keypoint confidence instead of range of motion.
+_SIDE_ROM_TIE_DEG = 15.0
+
+
+def _select_analyzed_side(sequence: PoseSequence, task_type: TaskType, threshold: float) -> str | None:
+    """Pick the leg to analyze over the WHOLE clip, not a single frame.
+
+    In these single-leg tasks the exercised leg is the one that actually moves,
+    so the side with the larger range of motion wins. Keypoint confidence only
+    breaks near-ties (and decides when neither leg shows meaningful motion) --
+    the two sides are often near-tied on confidence in a sagittal view, which is
+    why confidence alone (evaluated on one frame) used to lock onto the wrong,
+    stationary leg.
+    """
+    config = TASK_CONFIGS[task_type]
+    stats: dict[str, tuple[float, float]] = {}  # side -> (rom_deg, mean_conf)
     for side in ("left", "right"):
-        angle = _angle_for_frame(keypoints, scores, task_type, side, threshold)
-        if angle is not None:
-            indices = leg_indices(side)
-            needed = [indices[TASK_CONFIGS[task_type].vertex_joint], indices[TASK_CONFIGS[task_type].ray_a_joint], indices[TASK_CONFIGS[task_type].ray_b_joint]]
-            candidates.append((float(np.mean([scores[i] for i in needed])), side))
-    return max(candidates)[1] if candidates else None
+        indices = leg_indices(side)
+        needed = [indices[config.vertex_joint], indices[config.ray_a_joint], indices[config.ray_b_joint]]
+        angles: list[float] = []
+        confidences: list[float] = []
+        for pose in sequence.frames:
+            if not pose.has_subject:
+                continue
+            angle = _angle_for_frame(pose.keypoints, pose.scores, task_type, side, threshold)
+            if angle is not None:
+                angles.append(angle)
+                confidences.append(float(np.mean([pose.scores[i] for i in needed])))
+        if angles:
+            stats[side] = (max(angles) - min(angles), float(np.mean(confidences)))
+
+    if not stats:
+        return None
+    if len(stats) == 1:
+        return next(iter(stats))
+    (left_rom, left_conf), (right_rom, right_conf) = stats["left"], stats["right"]
+    if abs(left_rom - right_rom) >= _SIDE_ROM_TIE_DEG:
+        return "left" if left_rom > right_rom else "right"
+    return "left" if left_conf >= right_conf else "right"
 
 
 def _collect_pose_sequence(input_path: Path, output_path: Path, metadata: dict, settings: Settings, estimator: PoseEstimator, frame_observer=None) -> PoseSequence:
@@ -214,13 +245,13 @@ def analyze_video(input_path: Path, output_path: Path, task_type: TaskType, view
     confidence_samples: list[float] = []
     valid_frames = 0
     processed_frames = sequence.processed_frames
-    side: str | None = None
+    # Decide the analyzed leg once over the whole clip (see _select_analyzed_side)
+    # rather than locking onto whatever the first frame happened to favour.
+    side = _select_analyzed_side(sequence, task_type, settings.min_keypoint_confidence)
     for pose in sequence.frames:
         if not pose.has_subject:
             continue
         subject_keypoints, subject_scores = pose.keypoints, pose.scores
-        if side is None:
-            side = _choose_side(subject_keypoints, subject_scores, task_type, settings.min_keypoint_confidence)
         if side:
             angle = _angle_for_frame(subject_keypoints, subject_scores, task_type, side, settings.min_keypoint_confidence)
             if angle is not None:

@@ -5,6 +5,8 @@ __pycache__/
 .env
 clip.mp4
 clip2.mp4
+# clip3.mp4
+# calib.mp4
 
 ## local dump: paper, clip, temp
 /dump

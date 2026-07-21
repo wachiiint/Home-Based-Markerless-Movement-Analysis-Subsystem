@@ -5,7 +5,7 @@ from app.models.calibration import BoardDetectionDiagnostics, CameraCalibration,
 from app.schemas.movement import TaskType
 from app.services.lifting.lifter import StubLifter
 from app.services.pose.pose_sequence import FramePose2D, PoseSequence
-from app.services.video_analysis import _augment_with_3d
+from app.services.video_analysis import _augment_with_3d, _select_analyzed_side
 
 SETTINGS = Settings()
 
@@ -52,6 +52,55 @@ def _ok_calibration():
 
 def _diag(detected):
     return BoardDetectionDiagnostics(detected=detected)
+
+
+def _one_leg_moving_sequence(moving="right", t=8):
+    """Sequence where one knee sweeps a wide arc and the other stays straight.
+
+    The stationary leg is given *higher* keypoint confidence on the first frame,
+    reproducing the condition under which the old first-frame lock picked the
+    wrong (non-exercising) leg.
+    """
+    import math
+
+    from app.models import keypoints as kp
+
+    hip_i, knee_i, ankle_i = (
+        (kp.RIGHT_HIP, kp.RIGHT_KNEE, kp.RIGHT_ANKLE) if moving == "right"
+        else (kp.LEFT_HIP, kp.LEFT_KNEE, kp.LEFT_ANKLE)
+    )
+    still = (
+        (kp.LEFT_HIP, kp.LEFT_KNEE, kp.LEFT_ANKLE) if moving == "right"
+        else (kp.RIGHT_HIP, kp.RIGHT_KNEE, kp.RIGHT_ANKLE)
+    )
+    frames = []
+    for i in range(t):
+        points = np.zeros((26, 2))
+        scores = np.full(26, 0.9)
+        # stationary leg: hip-knee-ankle collinear -> constant 180deg knee angle
+        points[still[0]], points[still[1]], points[still[2]] = (460, 500), (460, 700), (460, 900)
+        # moving leg: ankle sweeps, driving a wide knee ROM
+        theta = math.radians(180 - i * 15)
+        points[hip_i], points[knee_i] = (540, 500), (540, 700)
+        points[ankle_i] = (540 + math.sin(theta) * 200, 700 + math.cos(theta) * 200)
+        if i == 0:
+            # bias the FIRST frame toward the stationary leg on confidence
+            for j in still:
+                scores[j] = 0.99
+            for j in (hip_i, knee_i, ankle_i):
+                scores[j] = 0.80
+        frames.append(FramePose2D(i, i, points, scores))
+    return PoseSequence(frames=frames, width=1000, height=1000)
+
+
+def test_select_side_picks_moving_leg_over_first_frame_confidence():
+    seq = _one_leg_moving_sequence(moving="right")
+    assert _select_analyzed_side(seq, TaskType.KNEE_EXTENSION, SETTINGS.min_keypoint_confidence) == "right"
+
+
+def test_select_side_symmetric_left():
+    seq = _one_leg_moving_sequence(moving="left")
+    assert _select_analyzed_side(seq, TaskType.KNEE_EXTENSION, SETTINGS.min_keypoint_confidence) == "left"
 
 
 def test_no_lifter_stays_2d():
