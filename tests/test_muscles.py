@@ -1,3 +1,5 @@
+import json
+
 import numpy as np
 
 from app.services.lifting.muscles import compute_muscle_overlay
@@ -37,10 +39,16 @@ def test_overlay_covers_both_legs():
     overlay = compute_muscle_overlay(seq)
     sides = {m["side"] for m in overlay}
     assert sides == {"left", "right"}
-    # every muscle carries one normalized value per frame, all in [0, 1]
     for m in overlay:
+        # one normalized value per frame, all in [0, 1]
         assert len(m["length"]) == 3
         assert all(0.0 <= v <= 1.0 for v in m["length"])
+        # anchors: an ordered list of [jointA, jointB, t] with t in [0, 1]
+        assert len(m["anchors"]) >= 2
+        for a, b, t in m["anchors"]:
+            assert isinstance(a, int) and isinstance(b, int)
+            assert 0.0 <= t <= 1.0
+        assert "bulge" in m
 
 
 def test_extensor_stretches_as_knee_flexes():
@@ -67,3 +75,62 @@ def test_static_pose_is_neutral():
 
 def test_empty_sequence_returns_no_muscles():
     assert compute_muscle_overlay(np.zeros((0, 17, 3))) == []
+
+
+# --- gait2392 extractor + loader ------------------------------------------------
+
+_SYNTHETIC_OSIM = """<?xml version="1.0"?>
+<OpenSimDocument>
+ <Model>
+  <ForceSet><objects>
+   <Thelen2003Muscle name="rect_fem_r">
+    <GeometryPath><PathPointSet><objects>
+     <PathPoint name="p1"><body>femur_r</body><location>0.03 -0.202 0.005</location></PathPoint>
+     <PathPoint name="p2"><body>tibia_r</body><location>0.06 -0.043 0.0</location></PathPoint>
+    </objects></PathPointSet></GeometryPath>
+   </Thelen2003Muscle>
+   <Thelen2003Muscle name="rect_fem_l">
+    <GeometryPath><PathPointSet><objects>
+     <PathPoint name="p1"><body>femur_l</body><location>0.03 -0.202 -0.005</location></PathPoint>
+     <PathPoint name="p2"><body>tibia_l</body><location>0.06 -0.043 0.0</location></PathPoint>
+    </objects></PathPointSet></GeometryPath>
+   </Thelen2003Muscle>
+   <Thelen2003Muscle name="soleus_r">
+    <GeometryPath><PathPointSet><objects>
+     <PathPoint name="s1"><body>tibia_r</body><location>-0.002 -0.15 0.007</location></PathPoint>
+    </objects></PathPointSet></GeometryPath>
+   </Thelen2003Muscle>
+  </objects></ForceSet>
+ </Model>
+</OpenSimDocument>"""
+
+
+def test_extractor_maps_points_to_bone_fractions(tmp_path):
+    from app.tools.extract_gait2392_muscles import extract
+
+    osim = tmp_path / "mini.osim"
+    osim.write_text(_SYNTHETIC_OSIM, encoding="utf-8")
+    muscles = extract(osim)
+
+    # Only the curated rect_fem is kept (soleus is not in the curated set).
+    assert [m["name"] for m in muscles] == ["Quadriceps"]
+    quad = muscles[0]
+    assert quad["joint"] == "knee" and quad["lengthens_on_flexion"] is True
+    # femur point (~mid-femur) -> hip->knee fraction; tibia point near knee -> knee->ankle.
+    assert quad["anchors"][0][:2] == ["hip", "knee"]
+    assert 0.4 < quad["anchors"][0][2] < 0.6
+    assert quad["anchors"][1][:2] == ["knee", "ankle"]
+    assert quad["bulge"] > 0  # anterior points (x > 0) -> front bulge
+
+
+def test_muscles_uses_gait2392_table_when_present(tmp_path, monkeypatch):
+    from app.services.lifting.muscles import active_muscles
+
+    table = {"muscles": [{"name": "Sartorius", "joint": "knee", "lengthens_on_flexion": False,
+                          "bulge": 0.05, "anchors": [["hip", "knee", 0.1], ["knee", "ankle", 0.2]]}]}
+    path = tmp_path / "gait2392_muscles.json"
+    path.write_text(json.dumps(table), encoding="utf-8")
+    monkeypatch.setenv("GAIT2392_MUSCLES_PATH", str(path))
+
+    names = [m.name for m in active_muscles()]
+    assert names == ["Sartorius"]  # the loaded table replaces the built-in set

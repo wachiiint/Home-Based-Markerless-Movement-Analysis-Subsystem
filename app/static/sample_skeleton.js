@@ -63,12 +63,13 @@ function buildFrame(cycleFraction) {
 // the same overlay the backend produces (kept in sync with that module).
 const LEG = { left: { hip: 4, knee: 5, ankle: 6 }, right: { hip: 1, knee: 2, ankle: 3 } };
 const PELVIS = 0, THORAX = 8;
+// Mirrors _BUILTIN_MUSCLES in app/services/lifting/muscles.py (keep in sync).
 const MUSCLES = [
-  { name: 'Quadriceps', joint: 'knee', lengthensOnFlexion: true, path: ['hip', 'knee'], offset: +1 },
-  { name: 'Hamstrings', joint: 'knee', lengthensOnFlexion: false, path: ['hip', 'knee'], offset: -1 },
-  { name: 'Gastrocnemius', joint: 'knee', lengthensOnFlexion: false, path: ['knee', 'ankle'], offset: -1 },
-  { name: 'Iliopsoas', joint: 'hip', lengthensOnFlexion: false, path: ['pelvis', 'knee'], offset: +1 },
-  { name: 'Gluteals', joint: 'hip', lengthensOnFlexion: true, path: ['pelvis', 'knee'], offset: -1 },
+  { name: 'Quadriceps', joint: 'knee', lengthensOnFlexion: true, anchors: [['hip', 'knee', 0.05], ['hip', 'knee', 0.55], ['knee', 'ankle', 0.12]], bulge: +0.06 },
+  { name: 'Hamstrings', joint: 'knee', lengthensOnFlexion: false, anchors: [['pelvis', 'hip', 0.5], ['hip', 'knee', 0.5], ['knee', 'ankle', 0.12]], bulge: -0.06 },
+  { name: 'Gastrocnemius', joint: 'knee', lengthensOnFlexion: false, anchors: [['hip', 'knee', 0.82], ['knee', 'ankle', 0.5], ['knee', 'ankle', 0.95]], bulge: -0.05 },
+  { name: 'Iliopsoas', joint: 'hip', lengthensOnFlexion: false, anchors: [['thorax', 'pelvis', 0.55], ['pelvis', 'hip', 0.6], ['hip', 'knee', 0.12]], bulge: +0.05 },
+  { name: 'Gluteals', joint: 'hip', lengthensOnFlexion: true, anchors: [['pelvis', 'hip', 0.2], ['hip', 'knee', 0.12]], bulge: -0.06 },
 ];
 
 const jointIndex = (side, name) => (name === 'pelvis' ? PELVIS : name === 'thorax' ? THORAX : LEG[side][name]);
@@ -102,7 +103,8 @@ function computeMuscles(frames) {
         const a = jointAngle(f, side, m.joint);
         return m.lengthensOnFlexion ? 180 - a : a;
       });
-      overlay.push({ name: m.name, side, joints: m.path.map((n) => jointIndex(side, n)), offset: m.offset, length: normalize(raw) });
+      const anchors = m.anchors.map(([a, b, t]) => [jointIndex(side, a), jointIndex(side, b), t]);
+      overlay.push({ name: m.name, side, anchors, bulge: m.bulge, length: normalize(raw) });
     }
   }
   return overlay;

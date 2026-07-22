@@ -10,6 +10,7 @@ __pycache__/
 data/
 
 # model weights
+models/target
 models/*.onnx
 models/*.onnx.data
 *.bin

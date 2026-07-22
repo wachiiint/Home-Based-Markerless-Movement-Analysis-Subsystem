@@ -26,8 +26,8 @@ const COLOR_GRID_SUB = 0xe6f3ec;
 // Muscle overlay (M-A): length proxy coloured contracted (warm) -> stretched (cool).
 const COLOR_MUSCLE_SHORT = new THREE.Color(0xd9534f); // most shortened (length 0)
 const COLOR_MUSCLE_LONG = new THREE.Color(0x3b7fd0); // most stretched (length 1)
-const MUSCLE_OFFSET = 0.05; // lateral offset (units of pelvis-head) to fan tubes off the bone
-const MUSCLE_RADIUS = 0.03;
+const MUSCLE_RADIUS = 0.028; // belly radius (units of pelvis-head); tapers to the tendons
+const MUSCLE_TUBE_SEGMENTS = 24;
 
 // Rotate so the body stands upright and rescale to pelvis-head = 1 unit.
 function normalizeFrames(frames) {
@@ -110,33 +110,80 @@ export function mountViewer(container) {
 
   function buildMuscles(payload) {
     for (const def of payload.muscles || []) {
-      const geometry = new THREE.CylinderGeometry(MUSCLE_RADIUS, MUSCLE_RADIUS, 1, 12);
-      const material = new THREE.MeshStandardMaterial({ color: COLOR_MUSCLE_SHORT.clone(), roughness: 0.6 });
-      const mesh = new THREE.Mesh(geometry, material);
+      // Anchors: [jointA, jointB, t] -> a point t of the way along that bone.
+      const anchors = (def.anchors || []).map((a) => ({ a: a[0], b: a[1], t: a[2] }));
+      if (anchors.length < 2) continue;
+      const material = new THREE.MeshStandardMaterial({ color: COLOR_MUSCLE_SHORT.clone(), roughness: 0.55 });
+      const mesh = new THREE.Mesh(new THREE.BufferGeometry(), material);
       mesh.visible = musclesVisible;
       skeleton.add(mesh);
-      muscles.push({ mesh, a: def.joints[0], b: def.joints[def.joints.length - 1], offset: def.offset, length: def.length });
+      muscles.push({ mesh, anchors, bulge: def.bulge || 0, length: def.length });
     }
   }
 
-  // Lay one muscle tube along its origin->insertion segment, pushed sideways off
-  // the bone (so antagonists separate) and coloured by its per-frame length.
+  const _v = new THREE.Vector3();
+
+  // Route a muscle as a smooth curve through its anchor points (each a fraction
+  // along a bone, so it bends with the limb), bowed sideways into a belly, and
+  // coloured by the per-frame length. Geometry is rebuilt per shown frame -- fine
+  // for a scene this small and the on-demand (non-continuous) render loop.
   function placeMuscle(muscle, pose) {
-    const start = pose[muscle.a];
-    const end = pose[muscle.b];
-    const direction = new THREE.Vector3().subVectors(end, start);
-    const length = direction.length();
-    if (length < 1e-6) return;
-    direction.normalize();
-    let perp = new THREE.Vector3().crossVectors(direction, UP);
-    if (perp.lengthSq() < 1e-6) perp = new THREE.Vector3(1, 0, 0);
-    const ap = new THREE.Vector3().crossVectors(direction, perp.normalize()).normalize();
-    const mid = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5).addScaledVector(ap, muscle.offset * MUSCLE_OFFSET);
-    muscle.mesh.position.copy(mid);
-    muscle.mesh.scale.set(1, length * 0.92, 1);
-    muscle.mesh.quaternion.setFromUnitVectors(UP, direction);
+    const pts = muscle.anchors.map(({ a, b, t }) => new THREE.Vector3().lerpVectors(pose[a], pose[b], t));
+    // Bow the interior points off the origin->insertion axis to form a belly.
+    if (muscle.bulge) {
+      const axis = _v.subVectors(pts[pts.length - 1], pts[0]);
+      if (axis.lengthSq() > 1e-9) {
+        axis.normalize();
+        let perp = new THREE.Vector3().crossVectors(axis, UP);
+        if (perp.lengthSq() < 1e-6) perp = new THREE.Vector3(1, 0, 0);
+        const dir = new THREE.Vector3().crossVectors(axis, perp.normalize()).normalize();
+        for (let i = 1; i < pts.length - 1; i += 1) {
+          const s = Math.sin((i / (pts.length - 1)) * Math.PI); // 0 at ends, 1 mid
+          pts[i].addScaledVector(dir, muscle.bulge * s);
+        }
+      }
+    }
+    const curve = new THREE.CatmullRomCurve3(pts);
+    // Radius tapers from thin tendon ends to a fuller belly.
+    const radius = (i, n) => MUSCLE_RADIUS * (0.4 + 0.6 * Math.sin((i / n) * Math.PI));
+    muscle.mesh.geometry.dispose();
+    muscle.mesh.geometry = tubeGeometry(curve, MUSCLE_TUBE_SEGMENTS, radius);
     const value = muscle.length[Math.min(frameIndex, muscle.length.length - 1)];
     muscle.mesh.material.color.copy(COLOR_MUSCLE_SHORT).lerp(COLOR_MUSCLE_LONG, value);
+  }
+
+  // A tube of varying radius along a curve (three's TubeGeometry is constant-radius).
+  function tubeGeometry(curve, segments, radiusFn) {
+    const radial = 8;
+    const positions = [];
+    const indices = [];
+    const frames = curve.computeFrenetFrames(segments, false);
+    for (let i = 0; i <= segments; i += 1) {
+      const p = curve.getPointAt(i / segments);
+      const N = frames.normals[i];
+      const B = frames.binormals[i];
+      const r = radiusFn(i, segments);
+      for (let j = 0; j <= radial; j += 1) {
+        const a = (j / radial) * Math.PI * 2;
+        positions.push(
+          p.x + r * (Math.cos(a) * N.x + Math.sin(a) * B.x),
+          p.y + r * (Math.cos(a) * N.y + Math.sin(a) * B.y),
+          p.z + r * (Math.cos(a) * N.z + Math.sin(a) * B.z),
+        );
+      }
+    }
+    const cols = radial + 1;
+    for (let i = 0; i < segments; i += 1) {
+      for (let j = 0; j < radial; j += 1) {
+        const p0 = i * cols + j;
+        indices.push(p0, p0 + 1, p0 + cols, p0 + 1, p0 + cols + 1, p0 + cols);
+      }
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geometry.setIndex(indices);
+    geometry.computeVertexNormals();
+    return geometry;
   }
 
   function buildSkeleton(payload) {

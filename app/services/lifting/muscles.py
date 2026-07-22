@@ -1,26 +1,39 @@
-"""Kinematic muscle-length proxies for the 3D viewer overlay (M-A).
+"""Kinematic muscle overlay for the 3D viewer (M-A).
 
-DISPLAY ONLY, and explicitly a *geometry* proxy, not a force/activation one: a
-single camera gives no ground-reaction force, so muscle force cannot be
-recovered. What this computes is muscle *length* driven by joint angle -- a
-muscle that spans a flexing joint lengthens or shortens as that joint moves.
-Each muscle's length is min-max normalized to ``[0, 1]`` over the clip
-(``0`` = most shortened, ``1`` = most lengthened / stretched) purely so the
-viewer can colour it. It is never a clinical number and stays out of
-``MovementAssessmentResponse`` -- it rides only in the demo ``pose_3d`` payload.
+DISPLAY ONLY, and explicitly a *geometry* proxy, not force/activation: a single
+camera gives no ground-reaction force, so muscle force cannot be recovered. Two
+things are modelled, deliberately decoupled:
 
-The driving angles come from the H36M17 skeleton (see ``skeleton_convert``):
-knee = angle(hip, knee, ankle); hip = angle(thorax, hip, knee). Ankle muscles
-are driven by the knee angle as a proxy because H36M17 has no toe joint.
+* **Shape** -- each muscle is routed as an ordered list of *anchors*, each a
+  point a fraction ``t`` along the segment between two H36M17 joints (e.g. 55%
+  down the femur). Anchors ride the skeleton, so the drawn path bends with the
+  limb. Along-bone placement is the well-observed part of a single-camera lift,
+  so the shape is robust; the sideways "belly" bulge the viewer adds is
+  illustrative.
+* **Colour** -- a per-frame length proxy in ``[0, 1]`` driven by the joint angle
+  (``0`` = most shortened, ``1`` = most stretched). Physiological *direction* is
+  correct (a knee extensor stretches as the knee flexes).
+
+Anchor placement comes either from a built-in anatomically-approximate table or,
+when present, from ``models/gait2392_muscles.json`` extracted from the OpenSim
+gait2392 model (see ``app/tools/extract_gait2392_muscles.py``). Either way this
+is a length/geometry estimate, **not** a validated gait2392 simulation -- the
+single-camera kinematics only reliably observe sagittal hip/knee flexion.
 """
 
 from __future__ import annotations
 
+import json
+import logging
+import os
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 
 from app.services.analysis.kinematics import three_point_angle_3d
+
+logger = logging.getLogger(__name__)
 
 _PELVIS = 0
 _THORAX = 8
@@ -29,25 +42,34 @@ _LEG = {
     "right": {"hip": 1, "knee": 2, "ankle": 3},
 }
 
+_DEFAULT_GAIT2392_PATH = Path(__file__).resolve().parents[3] / "models" / "target" / "gait2392_muscles.json"
+
+
+def _gait2392_path() -> Path:
+    """Where the extracted gait2392 anchor table lives (optional). Read at call
+    time so ``GAIT2392_MUSCLES_PATH`` can override it (tests, custom locations)."""
+    return Path(os.getenv("GAIT2392_MUSCLES_PATH", str(_DEFAULT_GAIT2392_PATH)))
+
 
 @dataclass(frozen=True)
 class MuscleDef:
     name: str
-    joint: str  # "knee" | "hip" -- which joint angle drives the length
-    lengthens_on_flexion: bool  # True = stretched as the joint flexes (antagonist)
-    path: tuple[str, ...]  # leg-joint names the muscle is drawn along
-    offset: int  # +1 anterior / -1 posterior -- only to fan the tubes apart visually
+    joint: str  # "knee" | "hip" -- which joint angle drives the length/colour
+    lengthens_on_flexion: bool  # True = stretched as that joint flexes
+    # Ordered anchors routing the muscle: (segment start joint, end joint, fraction t in [0,1]).
+    anchors: tuple[tuple[str, str, float], ...]
+    bulge: float  # signed sideways belly offset for the viewer (+ front / - back); 0 = none
 
 
-# A small, readable set of the major lower-limb muscles relevant to the flexion/
-# extension tasks. Physiological length *direction* is correct (a knee extensor
-# stretches as the knee flexes); the drawn geometry is illustrative.
-_MUSCLES: tuple[MuscleDef, ...] = (
-    MuscleDef("Quadriceps", "knee", lengthens_on_flexion=True, path=("hip", "knee"), offset=+1),
-    MuscleDef("Hamstrings", "knee", lengthens_on_flexion=False, path=("hip", "knee"), offset=-1),
-    MuscleDef("Gastrocnemius", "knee", lengthens_on_flexion=False, path=("knee", "ankle"), offset=-1),
-    MuscleDef("Iliopsoas", "hip", lengthens_on_flexion=False, path=("pelvis", "knee"), offset=+1),
-    MuscleDef("Gluteals", "hip", lengthens_on_flexion=True, path=("pelvis", "knee"), offset=-1),
+# Anatomically-*approximate* routing for the major flexion/extension muscles.
+# Honest label: hand-placed fractions, not measured -- replaced by gait2392 data
+# when models/gait2392_muscles.json is present.
+_BUILTIN_MUSCLES: tuple[MuscleDef, ...] = (
+    MuscleDef("Quadriceps", "knee", True, (("hip", "knee", 0.05), ("hip", "knee", 0.55), ("knee", "ankle", 0.12)), +0.06),
+    MuscleDef("Hamstrings", "knee", False, (("pelvis", "hip", 0.5), ("hip", "knee", 0.5), ("knee", "ankle", 0.12)), -0.06),
+    MuscleDef("Gastrocnemius", "knee", False, (("hip", "knee", 0.82), ("knee", "ankle", 0.5), ("knee", "ankle", 0.95)), -0.05),
+    MuscleDef("Iliopsoas", "hip", False, (("thorax", "pelvis", 0.55), ("pelvis", "hip", 0.6), ("hip", "knee", 0.12)), +0.05),
+    MuscleDef("Gluteals", "hip", True, (("pelvis", "hip", 0.2), ("hip", "knee", 0.12)), -0.06),
 )
 
 
@@ -57,6 +79,34 @@ def _index(side: str, name: str) -> int:
     if name == "thorax":
         return _THORAX
     return _LEG[side][name]
+
+
+def _load_gait2392_muscles() -> tuple[MuscleDef, ...] | None:
+    """Load anchor defs from the extracted gait2392 table, or None if absent/bad."""
+    path = _gait2392_path()
+    if not path.exists():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        muscles = tuple(
+            MuscleDef(
+                name=m["name"],
+                joint=m["joint"],
+                lengthens_on_flexion=bool(m["lengthens_on_flexion"]),
+                anchors=tuple((a[0], a[1], float(a[2])) for a in m["anchors"]),
+                bulge=float(m.get("bulge", 0.05)),
+            )
+            for m in data["muscles"]
+        )
+        return muscles or None
+    except Exception:
+        logger.exception("failed to load gait2392 muscle table %s; using built-in", path)
+        return None
+
+
+def active_muscles() -> tuple[MuscleDef, ...]:
+    """gait2392-extracted muscles when available, else the built-in approximation."""
+    return _load_gait2392_muscles() or _BUILTIN_MUSCLES
 
 
 def _joint_angle(frame: np.ndarray, side: str, joint: str) -> float:
@@ -76,13 +126,8 @@ def _normalize(values: list[float]) -> list[float]:
 
 
 def muscle_length_series(keypoints_3d: np.ndarray, side: str, muscle: MuscleDef) -> list[float]:
-    """Per-frame length proxy for one muscle (pre-normalization).
-
-    Length increases with the flexion of the driven joint for an antagonist
-    (``lengthens_on_flexion``) and decreases for the agonist. Flexion is
-    ``180 - angle``, so raw length is ``180 - angle`` when it lengthens on
-    flexion, else the angle itself.
-    """
+    """Per-frame length proxy (pre-normalization): ``180 - angle`` when the muscle
+    lengthens on flexion, else the angle itself."""
     raw: list[float] = []
     for frame in keypoints_3d:
         angle = _joint_angle(frame, side, muscle.joint)
@@ -91,8 +136,8 @@ def muscle_length_series(keypoints_3d: np.ndarray, side: str, muscle: MuscleDef)
 
 
 def compute_muscle_overlay(keypoints_3d, sides: tuple[str, ...] = ("left", "right")) -> list[dict]:
-    """Viewer overlay: one entry per (side, muscle) with the joints to draw it
-    along and a per-frame normalized length in ``[0, 1]``.
+    """Viewer overlay: one entry per (side, muscle) with skeleton-relative anchors
+    (``[jointA, jointB, t]``), a belly ``bulge``, and a per-frame normalized length.
 
     Returns ``[]`` for an unusable sequence so the viewer simply draws no muscles.
     """
@@ -101,13 +146,13 @@ def compute_muscle_overlay(keypoints_3d, sides: tuple[str, ...] = ("left", "righ
         return []
     overlay: list[dict] = []
     for side in sides:
-        for muscle in _MUSCLES:
+        for muscle in active_muscles():
             overlay.append(
                 {
                     "name": muscle.name,
                     "side": side,
-                    "joints": [_index(side, name) for name in muscle.path],
-                    "offset": muscle.offset,
+                    "anchors": [[_index(side, a), _index(side, b), round(t, 4)] for a, b, t in muscle.anchors],
+                    "bulge": muscle.bulge,
                     "length": _normalize(muscle_length_series(keypoints_3d, side, muscle)),
                 }
             )

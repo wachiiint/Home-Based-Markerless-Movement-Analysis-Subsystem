@@ -10,7 +10,7 @@
 - `app/services/calibration/`: ChArUco-on-A4 detection, intrinsics/extrinsics, print-verify, board diagnostics, floor transform, and per-session calibration.
 - `app/services/lifting/`: Halpe26->H36M17 conversion, normalization, MotionBERT/stub lifters, 3D angles, metric scale, and guards.
 - `app/models/`: keypoint constants, task configuration, and calibration models.
-- `app/tools/`: CLI utilities — `generate_board` (ChArUco A4 PDF) and `calibrate_device` (per-device intrinsics).
+- `app/tools/`: CLI utilities — `generate_board` (ChArUco A4 PDF), `calibrate_device` (per-device intrinsics), and `extract_gait2392_muscles` (OpenSim gait2392 `.osim` → muscle-anchor JSON for the viewer overlay).
 - `app/utils/`: math and file helpers.
 - `tests/`: API contract, auth, response mapper, kinematics, lifting, board render, and 3D video-analysis tests.
 
@@ -96,14 +96,43 @@
   *force/activation* is not computed. Physiological length *direction* is correct (a knee extensor
   stretches as the knee flexes); the drawn tube geometry is illustrative. Kept out of
   `MovementAssessmentResponse`; rides only the demo display payload.
-- Viewer (`viewer3d.js`): each muscle is a tube along its origin→insertion segment, fanned off the
-  bone by a small perpendicular offset, colored contracted (warm) → stretched (cool) per frame.
-  Toggle button ("Muscles: off/on") + gradient legend; hidden unless the payload carries muscles
-  (any real lift does — calibration not required, only the MotionBERT lift). The synthetic
-  "Preview 3D" sample (`sample_skeleton.js`) reproduces the same `muscles` array in JS (mirroring
-  `muscles.py` — keep the two in sync), so the overlay is visible in the preview without a real clip.
-- Tests (`test_muscles.py`): extensor stretches / flexor shortens as the knee flexes; static pose →
-  neutral 0.5; both legs covered; empty sequence → `[]`.
+- Viewer (`viewer3d.js`): each muscle is a smooth **curved tube** (CatmullRom through its anchors)
+  with a tendon→belly→tendon radius taper and a sideways belly bulge — reads as muscle, not a stick.
+  Colored contracted (warm) → stretched (cool) per frame. Toggle button + gradient legend; hidden
+  unless the payload carries muscles (any real lift does — calibration not required, only the lift).
+  The synthetic "Preview 3D" sample (`sample_skeleton.js`) mirrors the same `muscles`/anchor structure
+  in JS (mirroring `muscles.py` — keep in sync), so the overlay shows without a real clip.
+
+### Muscle Anatomy: anchors + gait2392 (2026-07-23)
+
+- Changed files: `app/services/lifting/muscles.py`, `app/tools/extract_gait2392_muscles.py` (new),
+  `app/static/{viewer3d.js,sample_skeleton.js}`, `tests/test_muscles.py`, `docs/03-pipeline.md`.
+- Shape/colour decoupled: **shape** = ordered *anchors*, each a fraction `t` along a bone segment
+  (`[jointA, jointB, t]`) so the path bends with the limb (along-bone placement is the
+  single-camera-robust coordinate); **colour** = the same angle-driven length proxy as before.
+  Payload per muscle is now `{name, side, anchors, bulge, length}` (was `{joints, offset, length}`).
+- Anatomy source: `active_muscles()` loads `models/gait2392_muscles.json` if present, else a built-in
+  anatomically-*approximate* table. The JSON is produced offline (no OpenSim runtime) by
+  `app/tools/extract_gait2392_muscles.py --osim gait2392_simbody.osim` — it parses the `.osim` XML,
+  keeps a curated muscle set (`_CURATED`), and projects each path point onto the matching bone as a
+  fraction `t`. gait2392 `.osim` is NOT fetched by us (guide-don't-fetch); the user downloads it and
+  the JSON lands under `models/` (models-dir convention). Path override via `GAIT2392_MUSCLES_PATH`.
+- Honest scope (see `docs/03-pipeline.md` §4.5): gait2392 gives real *paths*, but its muscles need
+  full 3D multi-DOF kinematics; the single-camera lift only reliably observes sagittal hip/knee
+  flexion → quad/hamstring reads reasonable, rotation/abduction/foot muscles indicative only. It's a
+  kinematic length estimate, **not** a validated gait2392 simulation. Force needs a force plate — out
+  of scope no matter the model.
+- Tests (`test_muscles.py`): existing length-direction/static/both-legs/empty tests + anchor-shape
+  checks + `extract()` against a synthetic `.osim` + gait2392-table override via env.
+- Extractor dedup fix: it stripped `_r`/`_l` and matched both, emitting every muscle twice (10 vs 5);
+  now skips `_l` (geometry is side-agnostic — the app draws both legs itself). Regression-tested.
+- **Validated end-to-end (2026-07-23):** real run of `knee_flex_calib.mp4` with the calibrated
+  `samsung s22` device (1080×1920) → 2D both legs correct (left knee ROM 95.3°, right 112.8°),
+  `analyzed_side=both`, symmetry 0.084; the `pose_3d` payload carried all 5 gait2392 muscle groups
+  ×2 legs, anchors matching `models/target/gait2392_muscles.json`, and rendered in the viewer.
+  Metric 3D stayed 2D on this clip (monocular lift flagged: `l_femur cv=0.30`) — graceful fallback as
+  designed; muscles/overlay ride the lift regardless (shown with the "unreliable" flag).
+- **Status: M-A muscle overlay (built-in + gait2392) is DONE.**
 
 ### Smoothness (2026-07-22)
 
