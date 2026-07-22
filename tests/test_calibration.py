@@ -25,10 +25,18 @@ def test_print_scale_exact():
 
 
 def test_print_scale_corrects_undersized_print():
-    # printed bar measured 98mm -> lengths must be scaled up by 100/98
+    # printed bar measured 98mm -> the whole board printed 2% small, so the
+    # effective (real, on-paper) lengths must be scaled DOWN by 98/100.
     factor, warnings = compute_print_scale(98.0)
-    assert factor == pytest.approx(100 / 98)
+    assert factor == pytest.approx(98 / 100)
     assert warnings == []
+
+
+def test_print_scale_corrects_oversized_print():
+    # printed bar measured 110mm -> printer enlarged 10%, effective lengths
+    # must be scaled UP by 110/100.
+    factor, warnings = compute_print_scale(110.0)
+    assert factor == pytest.approx(110 / 100)
 
 
 def test_print_scale_warns_on_gross_deviation():
@@ -37,7 +45,36 @@ def test_print_scale_warns_on_gross_deviation():
 
 
 def test_effective_square_length_applies_scale():
-    assert effective_square_length_mm(SPEC, 100 / 98) == pytest.approx(SPEC.square_length_mm * 100 / 98)
+    assert effective_square_length_mm(SPEC, 98 / 100) == pytest.approx(SPEC.square_length_mm * 98 / 100)
+
+
+def test_print_scale_direction_recovers_metric_translation():
+    """End-to-end guard on the print-scale *direction* via synthetic projection.
+
+    Physically the printer enlarged the board 10% (measured bar = 110 mm), so the
+    real on-paper square is ``nominal * 1.1``. We project that physical board from
+    a known 2 m distance, then run the analysis path (derive the factor from the
+    measured bar, rebuild the board, recover the pose). Only ``factor = 110/100``
+    reconstructs the true translation; the reversed ``100/110`` mis-scales it by
+    ~17% and this assertion fails.
+    """
+    measured_bar_mm = 110.0
+    true_ratio = measured_bar_mm / 100.0
+
+    physical_board = build_charuco_board(SPEC, print_scale_factor=true_ratio)
+    obj_physical = physical_board.getChessboardCorners().reshape(-1, 1, 3).astype(np.float32)
+    k4 = [1200.0, 1200.0, 640.0, 360.0]
+    rvec = np.array([0.05, -0.03, 0.0])
+    tvec = np.array([10.0, -20.0, 2000.0])  # mm
+    img = _project(obj_physical, k4, rvec, tvec)
+
+    factor, _ = compute_print_scale(measured_bar_mm)
+    analysis_board = build_charuco_board(SPEC, factor)
+    obj_analysis = analysis_board.getChessboardCorners().reshape(-1, 1, 3).astype(np.float32)
+    _R, t, _plane, reproj = estimate_pose(obj_analysis, img, k4, [0, 0, 0, 0, 0])
+
+    assert t == pytest.approx(tvec, abs=1.0)  # metric translation recovered within 1 mm
+    assert reproj < 0.5
 
 
 # ---- device id ------------------------------------------------------------

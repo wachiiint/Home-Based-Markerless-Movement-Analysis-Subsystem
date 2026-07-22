@@ -235,7 +235,7 @@ class VideoAnalysis:
     pose_3d: dict | None = None
 
 
-def analyze_video(input_path: Path, output_path: Path, task_type: TaskType, view: str, settings: Settings, estimator: PoseEstimator, lifter=None, device_store=None, subject_height_mm: float | None = None, want_pose_3d: bool = False) -> VideoAnalysis:
+def analyze_video(input_path: Path, output_path: Path, task_type: TaskType, view: str, settings: Settings, estimator: PoseEstimator, lifter=None, device_store=None, subject_height_mm: float | None = None, want_pose_3d: bool = False, device_make: str = "", device_model: str = "") -> VideoAnalysis:
     metadata = read_video_metadata(input_path)
     calibrator = SessionCalibrator(device_store) if (lifter is not None and device_store is not None) else None
     observer = calibrator.observe if calibrator is not None else None
@@ -276,6 +276,13 @@ def analyze_video(input_path: Path, output_path: Path, task_type: TaskType, view
     )
 
     device_meta = extract_capture_metadata(input_path)
+    # MP4 upload strips EXIF make/model, so the video-derived id degrades to
+    # "resolution_only" and never matches a device calibrated with --make/--model.
+    # Let the caller (request form) supply them so both sides derive the same id.
+    if device_make:
+        device_meta["make"] = device_make
+    if device_model:
+        device_meta["model"] = device_model
     three_d = _augment_with_3d(
         sequence, task_type, side, settings, lifter, calibrator, device_meta, subject_height_mm, want_pose_3d,
     )

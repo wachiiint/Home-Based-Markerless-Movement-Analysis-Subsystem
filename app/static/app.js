@@ -20,6 +20,97 @@ fileInput.addEventListener('change', () => {
   sourceVideo.hidden = false;
 });
 
+// ---- Calibrated-device picker (01 / INPUT) --------------------------------
+const deviceSelect = document.querySelector('#device-select');
+const deviceMake = document.querySelector('#device-make');
+const deviceModel = document.querySelector('#device-model');
+
+async function loadDevices() {
+  // Keep the first "Auto" option, replace the rest on every refresh.
+  while (deviceSelect.options.length > 1) deviceSelect.remove(1);
+  try {
+    const response = await fetch('/api/demo/devices');
+    if (!response.ok) return;
+    const { devices } = await response.json();
+    for (const d of devices) {
+      const make = d.make || '';
+      const model = d.model || '';
+      // Only make/model-bearing devices are addressable from the patient clip;
+      // resolution-only calibrations are reached via the "Auto" option.
+      if (!make && !model) continue;
+      const size = d.image_size ? `${d.image_size[0]}×${d.image_size[1]}` : '';
+      const option = document.createElement('option');
+      option.value = d.device_id;
+      option.dataset.make = make;
+      option.dataset.model = model;
+      option.textContent = `${[make, model].filter(Boolean).join(' ')} · ${size}${d.status !== 'valid' ? ` (${d.status})` : ''}`;
+      deviceSelect.appendChild(option);
+    }
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+deviceSelect.addEventListener('change', () => {
+  const option = deviceSelect.selectedOptions[0];
+  deviceMake.value = option?.dataset.make || '';
+  deviceModel.value = option?.dataset.model || '';
+});
+
+loadDevices();
+
+// ---- Camera calibration (00 / CALIBRATION) --------------------------------
+const calibrateForm = document.querySelector('#calibrate-form');
+const calibFileInput = document.querySelector('#calib-file');
+const calibFileName = document.querySelector('#calib-file-name');
+const calibrateButton = document.querySelector('#calibrate-button');
+const calibrateMessage = document.querySelector('#calibrate-message');
+const calibrateResult = document.querySelector('#calibrate-result');
+
+calibFileInput.addEventListener('change', () => {
+  const file = calibFileInput.files[0];
+  if (file) calibFileName.textContent = file.name;
+});
+
+calibrateForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  calibrateButton.disabled = true;
+  calibrateButton.querySelector('span').textContent = 'Calibrating…';
+  calibrateMessage.textContent = '';
+  calibrateResult.hidden = true;
+  try {
+    const response = await fetch('/api/demo/calibrate', { method: 'POST', body: new FormData(calibrateForm) });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || 'Calibration failed');
+    const warnings = (payload.warnings || []).map((w) => `<li>${w}</li>`).join('');
+    const rows = [
+      ['Status', payload.ok ? 'Calibrated ✓' : `Failed (${payload.status})`],
+      ['Device ID', payload.device_id],
+      ['Metadata source', payload.source],
+      ['Resolution', payload.image_size ? `${payload.image_size[0]}×${payload.image_size[1]}` : '—'],
+      ['Frames sampled', payload.frames_sampled],
+    ];
+    if (payload.ok) {
+      rows.push(['Reprojection error', `${payload.reproj_error_px} px`]);
+      rows.push(['Print scale factor', payload.print_scale_factor]);
+    }
+    calibrateResult.className = `calibrate-result ${payload.ok ? 'ok' : 'fail'}`;
+    calibrateResult.innerHTML =
+      `<p class="calibrate-result-msg">${payload.message || ''}</p>` +
+      '<div class="metric-table">' +
+      rows.map(([k, v]) => `<div class="metric-cell"><span class="metric-label">${k}</span><strong>${v}</strong></div>`).join('') +
+      '</div>' +
+      (warnings ? `<ul class="calibrate-warnings">${warnings}</ul>` : '');
+    calibrateResult.hidden = false;
+    if (payload.ok) await loadDevices();  // surface the new device in the 01/INPUT picker
+  } catch (error) {
+    calibrateMessage.textContent = error.message;
+  } finally {
+    calibrateButton.disabled = false;
+    calibrateButton.querySelector('span').textContent = 'Calibrate device';
+  }
+});
+
 const percent = (value) => `${(Number(value) * 100).toFixed(0)}%`;
 const label = (key) => key.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 

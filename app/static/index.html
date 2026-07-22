@@ -16,6 +16,26 @@
       </div>
     </header>
 
+    <section class="panel calibrate-panel">
+      <div class="panel-heading"><div><p class="eyebrow">00 / CALIBRATION</p><h2>Calibrate camera</h2></div><span class="step">Optional · for metric 3D</span></div>
+      <p class="calibrate-intro">Upload a short video of the printed ChArUco board held at several angles. Do this once per device + resolution to unlock metric (millimetre) 3D. Analysis still runs in 2D without it.</p>
+      <form id="calibrate-form" class="calibrate-form">
+        <div class="two-col">
+          <label>Camera make<input name="make" placeholder="e.g. Apple"></label>
+          <label>Camera model<input name="model" placeholder="e.g. iPhone 13"></label>
+        </div>
+        <div class="three-col">
+          <label>Measured 100 mm bar (mm)<input name="measured_bar_mm" type="number" step="0.1" min="1" value="100"></label>
+          <label>Square size (mm)<input name="square_length_mm" type="number" step="0.1" min="1" value="25"></label>
+          <label>ArUco marker size (mm)<input name="marker_length_mm" type="number" step="0.1" min="1" value="18"></label>
+        </div>
+        <label class="dropzone" for="calib-file"><span class="upload-icon">↑</span><strong id="calib-file-name">Choose board video</strong><small>Board at several angles · 1080p recommended</small><input id="calib-file" name="file" type="file" accept="video/mp4,video/quicktime,video/x-msvideo" required></label>
+        <button id="calibrate-button" class="primary-button" type="submit"><span>Calibrate device</span><span class="button-arrow">→</span></button>
+        <p id="calibrate-message" class="message" role="alert"></p>
+        <div id="calibrate-result" class="calibrate-result" hidden></div>
+      </form>
+    </section>
+
     <section class="workspace">
       <form id="analysis-form" class="panel form-panel">
         <div class="panel-heading"><div><p class="eyebrow">01 / INPUT</p><h2>Upload movement video</h2></div><span class="step">MP4 · MOV · AVI</span></div>
@@ -24,6 +44,11 @@
           <label>Movement task<select name="task_type"><option value="knee_flexion">Knee flexion</option><option value="knee_extension">Knee extension</option><option value="hip_flexion">Hip flexion</option><option value="hip_extension">Hip extension</option><option value="ankle_dorsiflexion">Ankle dorsiflexion</option><option value="ankle_plantarflexion">Ankle plantarflexion</option></select></label>
           <label>Camera view<select name="view"><option value="lateral">Lateral</option><option value="frontal">Frontal</option></select></label>
         </div>
+        <label>Calibrated device <small class="hint">(for metric 3D · resolution must match)</small>
+          <select id="device-select"><option value="">Auto — 2D / uncalibrated</option></select>
+        </label>
+        <input type="hidden" name="device_make" id="device-make">
+        <input type="hidden" name="device_model" id="device-model">
         <label class="dropzone" for="file"><span class="upload-icon">↑</span><strong id="file-name">Choose a video file</strong><small>Maximum 100 MB</small><input id="file" name="file" type="file" accept="video/mp4,video/quicktime,video/x-msvideo" required></label>
         <video id="source-video" class="source-video" controls hidden></video>
         <button id="submit-button" class="primary-button" type="submit"><span>Analyze movement</span><span class="button-arrow">→</span></button>

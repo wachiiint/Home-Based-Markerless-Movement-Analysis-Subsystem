@@ -30,6 +30,10 @@ class DeviceStore:
         data[intrinsics.device_id] = intrinsics.model_dump()
         self._save(data)
 
+    def all(self) -> list[DeviceIntrinsics]:
+        """Every persisted device record (unfiltered by resolution)."""
+        return [DeviceIntrinsics(**record) for record in self._load().values()]
+
     def get(self, device_id: str, image_size: tuple[int, int] | None = None) -> DeviceIntrinsics | None:
         data = self._load()
         record = data.get(device_id)
