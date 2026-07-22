@@ -23,6 +23,7 @@ from app.services.pose.pose_sequence import FramePose2D, PoseSequence
 from app.services.response_mapper import build_assessment_response
 from app.services.analysis.screening import screen_rom
 from app.services.analysis.smoothing import exponential_moving_average
+from app.services.analysis.smoothness import compute_smoothness
 from app.services.pose.subject_selector import select_main_subject
 from app.services.video_io import read_video_metadata
 
@@ -263,6 +264,7 @@ def analyze_video(input_path: Path, output_path: Path, task_type: TaskType, view
         raise ValueError("no usable pose found in video")
     smoothed = exponential_moving_average(angle_samples, settings.smoothing_alpha)
     min_angle, max_angle, rom = range_of_motion(smoothed)
+    smoothness = compute_smoothness(smoothed, settings.frame_sample_fps)
     quality_ratio = valid_frames / processed_frames if processed_frames else 0.0
     mean_confidence = float(np.mean(confidence_samples)) if confidence_samples else 0.0
     config = TASK_CONFIGS[task_type]
@@ -309,5 +311,6 @@ def analyze_video(input_path: Path, output_path: Path, task_type: TaskType, view
         transformation_6dof=three_d.transformation_6dof,
         board_diagnostics=three_d.board_diagnostics,
         guard_warnings=three_d.guard_warnings,
+        smoothness=smoothness,
     )
     return VideoAnalysis(response=response, pose_3d=three_d.pose_3d)

@@ -36,6 +36,7 @@ def build_assessment_response(
     transformation_6dof: TransformationMatrix6DoF | None = None,
     board_diagnostics: BoardDetectionDiagnostics | None = None,
     guard_warnings: list[str] | None = None,
+    smoothness: dict | None = None,
 ) -> MovementAssessmentResponse:
     config = TASK_CONFIGS[task_type]
     rom = round(angle_max - angle_min, 2)
@@ -61,10 +62,10 @@ def build_assessment_response(
             joint_angles_3d=joint_angles_3d or {},
             scale_mm_per_unit=scale_mm_per_unit,
             scale_source=scale_source,
-            gait_parameters={}, #TODO: must fill to complete project ?!?
-            compensation={}, #TODO: must fill to complete project ?!?
-            smoothness={}, #TODO: must fill to complete project ?!?
-            symmetry_index_score=None,
+            gait_parameters={},  # TODO(Q3): needs a walking task + foot-contact detection
+            compensation={},  # TODO(Q4): multi-joint compensation detection
+            smoothness=smoothness or {},
+            symmetry_index_score=None,  # TODO(Q2): needs both sides measured
             pose_quality=PoseQuality(
                 mean_keypoint_confidence=mean_keypoint_confidence,
                 valid_frame_ratio=valid_frame_ratio,

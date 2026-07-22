@@ -239,7 +239,13 @@ form.addEventListener('submit', async (event) => {
     document.querySelector('#confidence-value').textContent = percent(screening.confidence_score);
     document.querySelector('#side-value').textContent = assessment.video_metadata.analyzed_side || '—';
     document.querySelector('#valid-value').textContent = percent(quality.valid_frame_ratio);
-    document.querySelector('#angle-metrics').innerHTML = Object.entries(assessment.clinical_metrics.joint_angles).map(([key, value]) => `<div class="metric-cell"><span class="metric-label">${label(key)}</span><strong>${Number(value).toFixed(1)}°</strong></div>`).join('');
+    const angleCells = Object.entries(assessment.clinical_metrics.joint_angles).map(([key, value]) => `<div class="metric-cell"><span class="metric-label">${label(key)}</span><strong>${Number(value).toFixed(1)}°</strong></div>`);
+    const smoothness = assessment.clinical_metrics.smoothness || {};
+    const smoothnessCells = [];
+    if ('sparc' in smoothness) smoothnessCells.push(`<div class="metric-cell"><span class="metric-label">Smoothness (SPARC)</span><strong>${smoothness.sparc.toFixed(2)}</strong></div>`);
+    if ('log_dimensionless_jerk' in smoothness) smoothnessCells.push(`<div class="metric-cell"><span class="metric-label">Smoothness (LDLJ)</span><strong>${smoothness.log_dimensionless_jerk.toFixed(2)}</strong></div>`);
+    if ('n_movement_units' in smoothness) smoothnessCells.push(`<div class="metric-cell"><span class="metric-label">Movement units</span><strong>${smoothness.n_movement_units}</strong></div>`);
+    document.querySelector('#angle-metrics').innerHTML = angleCells.concat(smoothnessCells).join('');
     metricsSection.hidden = false;
     await showPose3d(payload.pose_3d_url);
   } catch (error) {

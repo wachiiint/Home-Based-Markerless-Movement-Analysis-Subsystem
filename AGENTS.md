@@ -39,18 +39,53 @@
 - Phase B (`app/services/calibration/`, `app/models/calibration.py`): ChArUco-on-A4 calibration. Per-device intrinsics (persisted, resolution-keyed, stale on mismatch) + per-session extrinsics/floor plane; print-verify corrects printer scaling; detection is separated from pose/intrinsic math so metric recovery is testable via synthetic projection. Requires `opencv-contrib-python` (aruco).
 - Phase C (`app/services/lifting/`): Halpe26->H36M17 conversion (mid-spine synthesised), screen-coordinate normalization, a `Lifter` protocol with a `MotionBertAdapter` (ONNX I/O contract, needs weights) and a `StubLifter`, and a pipeline bridging `PoseSequence` -> convert -> normalize -> lift.
 - Phase D (`video_analysis.py`, `response_mapper.py`, `main.py`, `app/services/lifting/{angles_3d,metric_scale,guards}.py`, `app/services/calibration/{session,board_diagnostics,transform}.py`): wires calibration + lifting into `analyze_video`. D1 startup wiring + ONNX-validation guard; D2 per-session ChArUco calibration with board diagnostics; D3 metric scale (feet ray-plane + height fallback + cross-check guard); D4 3D hip/knee angles (ankle stays 2D); D5 camera->floor 6DoF + schema; D6 assembly with graceful 2D fallback + `analysis_mode` flag + bone-length guard. All 3D work is best-effort/try-guarded so the endpoint always returns the 2D result. New response fields (additive): `analysis_mode`, `clinical_metrics.joint_angles_3d`/`scale_mm_per_unit`/`scale_source`, real `transformation_matrix_6dof`, `board_diagnostics`, `guard_warnings`; request gained optional `subject_height_mm`.
-- Status update (2026-07-22): both former blockers are now cleared — see "3D Enablement & Calibration Validation" below. MotionBERT weights are present and 3D runs end-to-end; the remaining items are the print-scale direction bug, two device-id/resolution integration gaps, and Phase E.
+- Status update (2026-07-22): both former blockers are now cleared — see "3D Enablement & Calibration Validation" below. MotionBERT weights are present and 3D runs end-to-end. The print-scale direction bug and the make/model device-id gap are now **fixed**; the resolution-match constraint and Phase E remain. `smoothness` is now populated (see "Smoothness" below).
 
 ### 3D Enablement & Calibration Validation (2026-07-22)
 
 - Weights present: `models/motionbert_lite.onnx` (64 MB). `.env` sets `ENABLE_3D=true` + `MOTIONBERT_MODEL_PATH=models/motionbert_lite.onnx` (`.env.example` keeps `ENABLE_3D=false` as the safe default). ONNX input name is `keypoints_2d`; `validate_lifter_io()` passes; `build_lifter` returns a working `MotionBertAdapter` and `pose_3d` is populated end-to-end.
 - First successful metric-3D run (clip3.mp4, 1080x1920, seated knee extension, board flat on floor): `analysis_mode=3d`, `joint_angles_3d={knee_flexion_max 173.59, min 71.83, rom 101.76}` (sensible), real `transformation_matrix_6dof` present, `scale_mm_per_unit=2419 (feet_floor)`, `board_diagnostics.recommendation=ok` (board detected in 150/152 frames). Two non-blocking `guard_warnings`: device_id derived from resolution only (low confidence), and scale_uncertain (feet-floor 2419 vs height 2015.7 differ ~17%). Joint angles are scale-invariant, so they are trustworthy despite the scale uncertainty.
-- Integration gaps found (still open):
-  1. Resolution must match between the calibration clip and the patient clip because `device_id` is keyed on resolution; the board also only reads reliably at 1080p (540p oblique gave 0 markers). Calibrate at the same resolution as the patient clip.
-  2. `--make/--model` on `calibrate_device` produces a "full" device_id, but `analyze_video`'s `extract_capture_metadata()` reads empty make/model from the uploaded mp4 (stripped on upload) and derives a "resolution_only" id that never matches -> "device not calibrated" -> 2D fallback. Workaround: calibrate WITHOUT `--make/--model` so both sides use the resolution_only id. Proper fix: read make/model from video metadata or pass device info through the request.
-  3. print-scale direction bug (latent, not yet fixed at user request): `print_verify.py` `compute_print_scale` returns `factor = nominal/measured`; it should be `measured/nominal`. `board.py` applies `effective = square_mm * factor`, so for a measured 110 mm bar (nominal 100) the factor should be 1.1 but the code yields 0.909 -> metric scale ~17% wrong in the wrong direction. Does NOT affect detection, intrinsics K, or joint angles (all scale-invariant). Sidestepped in the validation run with `--measured-bar-mm 100` (factor 1.0). Confirm with a synthetic-projection test before fixing.
+- Integration gaps:
+  1. (open) Resolution must match between the calibration clip and the patient clip because `device_id` is keyed on resolution; the board also only reads reliably at 1080p (540p oblique gave 0 markers). Calibrate at the same resolution as the patient clip.
+  2. (FIXED) make/model device-id gap: the assess request now accepts optional `device_make`/`device_model` form fields (`main.py`), passed through `analyze_video` into `extract_capture_metadata`, so a device calibrated with `--make/--model` matches without the resolution_only workaround.
+  3. (FIXED) print-scale direction: `print_verify.compute_print_scale` now returns `factor = measured/nominal` (was `nominal/measured`), with an updated docstring and the `test_print_scale_direction_recovers_metric_translation` synthetic-projection regression test.
 - Test clips on disk: `clip.mp4` (540p, patient sitting, no board), `clip2.mp4` (540p, knee ext, board oblique/unreadable), `clip3.mp4` (1080p, knee ext, board readable — the good patient clip), `calib.mp4` (1080p, multi-angle calibration clip).
-- Remaining: fix the print-scale direction bug (with regression test); close the make/model device-id gap so calibration matches without the workaround; Phase E (motion export + muscle params schema).
+- Remaining: the resolution-match constraint (gap 1); Phase E (motion export + muscle params schema).
+
+### Smoothness (2026-07-22)
+
+- Changed files: `app/services/analysis/smoothness.py` (new), `video_analysis.py`, `response_mapper.py`,
+  `app/static/app.js`, `tests/test_smoothness.py` (new).
+- What it does: fills the previously-empty `clinical_metrics.smoothness` field from the per-frame
+  joint-angle series (single-camera-safe — no GRF needed). Reports `sparc` (spectral arc length; less
+  negative = smoother), `log_dimensionless_jerk` (higher = smoother), `n_movement_units` (speed peaks),
+  and `n_samples`. Computed on the EMA-smoothed angle series at `frame_sample_fps`; returns `{}` when
+  there are too few frames or no movement (stays a best-effort placeholder). Shown in the demo analysis
+  panel. `build_fake_response` leaves it `{}`.
+- Remaining placeholders (still empty by design): `gait_parameters` (needs a walking task +
+  foot-contact detection), `compensation` (multi-joint), `symmetry_index_score` (needs both sides
+  measured). See the roadmap table below.
+
+## Roadmap / Task Plan (2026-07-22)
+
+Plain-language: single camera gives **no ground reaction force**, so real muscle *force/activation* is
+not computable — muscle work here is kinematic (geometry/angle-driven) only. Joint *angles* are
+scale-invariant, so they are trustworthy regardless of the metric-scale path.
+
+| ID | Task | Effort | Depends on | Risk | Priority | Benefit | Done |
+|----|------|--------|-----------|------|----------|---------|------|
+| F1 | Fix print-scale direction bug | ~0.5d | — | Low | High | Correct metric distances | [x] |
+| F2 | Surface per-frame angle trajectory | ~0.5–1d | — | Low | High | Unlocks smoothness + motion export | [x] |
+| Q1 | `smoothness` from angle curve (SPARC/LDLJ/units) | ~1–2d | F2 | Low–Med | High | Fills a real placeholder, clinically meaningful | [x] |
+| Q2 | `symmetry_index_score` (both sides) | ~2–3d | side-select refactor | Med | Medium | Left/right asymmetry indicator | [ ] |
+| Q3 | `gait_parameters` (cadence, step/stride) | ~4–6d | new walking task + foot-contact + F1 | High | Low | Only meaningful for gait clips | [ ] |
+| Q4 | `compensation` (trunk lean, hip hike) | ~3–5d | multi-joint analysis | High | Low | Fuzzy clinical definition | [ ] |
+| M-A | Visual muscle overlay on 3D skeleton (kinematic proxy, labeled) | ~3–5d | working 3D viewer | Med | High (demo) | Impressive demo now, no OpenSim needed | [ ] |
+| M-B | Real OpenSim `gait2392` export (Phase E1–E6: `.mot` + muscle-param schema) | ~1.5–3wk | F2, task→coord sign/offset map | High | Medium | Scientifically-grounded backend | [ ] |
+| CT | CT-driven muscle F0 (PCSA) | — | CT scan (unavailable) | — | Deferred | Patient-specific muscle force | [ ] |
+
+Notes: `pose_quality` is already computed (not a placeholder). Muscle *force* needs GRF/force plate →
+out of scope for single camera; both M-A and M-B show muscle *geometry/length*, not force.
 
 ## Scope Note
 
