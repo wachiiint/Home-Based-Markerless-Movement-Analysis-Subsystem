@@ -6,9 +6,12 @@
 - `app/core/`: settings, security, and logging.
 - `app/schemas/`: request enums and response models.
 - `app/services/`: video handling, pose adapters, kinematics, quality, screening, and response mapping.
-- `app/models/`: keypoint constants and task configuration.
+- `app/services/calibration/`: ChArUco-on-A4 detection, intrinsics/extrinsics, print-verify, board diagnostics, floor transform, and per-session calibration.
+- `app/services/lifting/`: Halpe26->H36M17 conversion, normalization, MotionBERT/stub lifters, 3D angles, metric scale, and guards.
+- `app/models/`: keypoint constants, task configuration, and calibration models.
+- `app/tools/`: CLI utilities — `generate_board` (ChArUco A4 PDF) and `calibrate_device` (per-device intrinsics).
 - `app/utils/`: math and file helpers.
-- `tests/`: API contract, auth, response mapper, and kinematics tests.
+- `tests/`: API contract, auth, response mapper, kinematics, lifting, board render, and 3D video-analysis tests.
 
 ## Current Work Log
 
@@ -36,7 +39,18 @@
 - Phase B (`app/services/calibration/`, `app/models/calibration.py`): ChArUco-on-A4 calibration. Per-device intrinsics (persisted, resolution-keyed, stale on mismatch) + per-session extrinsics/floor plane; print-verify corrects printer scaling; detection is separated from pose/intrinsic math so metric recovery is testable via synthetic projection. Requires `opencv-contrib-python` (aruco).
 - Phase C (`app/services/lifting/`): Halpe26->H36M17 conversion (mid-spine synthesised), screen-coordinate normalization, a `Lifter` protocol with a `MotionBertAdapter` (ONNX I/O contract, needs weights) and a `StubLifter`, and a pipeline bridging `PoseSequence` -> convert -> normalize -> lift.
 - Phase D (`video_analysis.py`, `response_mapper.py`, `main.py`, `app/services/lifting/{angles_3d,metric_scale,guards}.py`, `app/services/calibration/{session,board_diagnostics,transform}.py`): wires calibration + lifting into `analyze_video`. D1 startup wiring + ONNX-validation guard; D2 per-session ChArUco calibration with board diagnostics; D3 metric scale (feet ray-plane + height fallback + cross-check guard); D4 3D hip/knee angles (ankle stays 2D); D5 camera->floor 6DoF + schema; D6 assembly with graceful 2D fallback + `analysis_mode` flag + bone-length guard. All 3D work is best-effort/try-guarded so the endpoint always returns the 2D result. New response fields (additive): `analysis_mode`, `clinical_metrics.joint_angles_3d`/`scale_mm_per_unit`/`scale_source`, real `transformation_matrix_6dof`, `board_diagnostics`, `guard_warnings`; request gained optional `subject_height_mm`.
-- Remaining: obtain/export MotionBERT ONNX weights (3D stays off until then; `ENABLE_3D` + `MOTIONBERT_MODEL_PATH`); validate real board-in-frame calibration end-to-end; Phase E (motion export + muscle params schema).
+- Status update (2026-07-22): both former blockers are now cleared — see "3D Enablement & Calibration Validation" below. MotionBERT weights are present and 3D runs end-to-end; the remaining items are the print-scale direction bug, two device-id/resolution integration gaps, and Phase E.
+
+### 3D Enablement & Calibration Validation (2026-07-22)
+
+- Weights present: `models/motionbert_lite.onnx` (64 MB). `.env` sets `ENABLE_3D=true` + `MOTIONBERT_MODEL_PATH=models/motionbert_lite.onnx` (`.env.example` keeps `ENABLE_3D=false` as the safe default). ONNX input name is `keypoints_2d`; `validate_lifter_io()` passes; `build_lifter` returns a working `MotionBertAdapter` and `pose_3d` is populated end-to-end.
+- First successful metric-3D run (clip3.mp4, 1080x1920, seated knee extension, board flat on floor): `analysis_mode=3d`, `joint_angles_3d={knee_flexion_max 173.59, min 71.83, rom 101.76}` (sensible), real `transformation_matrix_6dof` present, `scale_mm_per_unit=2419 (feet_floor)`, `board_diagnostics.recommendation=ok` (board detected in 150/152 frames). Two non-blocking `guard_warnings`: device_id derived from resolution only (low confidence), and scale_uncertain (feet-floor 2419 vs height 2015.7 differ ~17%). Joint angles are scale-invariant, so they are trustworthy despite the scale uncertainty.
+- Integration gaps found (still open):
+  1. Resolution must match between the calibration clip and the patient clip because `device_id` is keyed on resolution; the board also only reads reliably at 1080p (540p oblique gave 0 markers). Calibrate at the same resolution as the patient clip.
+  2. `--make/--model` on `calibrate_device` produces a "full" device_id, but `analyze_video`'s `extract_capture_metadata()` reads empty make/model from the uploaded mp4 (stripped on upload) and derives a "resolution_only" id that never matches -> "device not calibrated" -> 2D fallback. Workaround: calibrate WITHOUT `--make/--model` so both sides use the resolution_only id. Proper fix: read make/model from video metadata or pass device info through the request.
+  3. print-scale direction bug (latent, not yet fixed at user request): `print_verify.py` `compute_print_scale` returns `factor = nominal/measured`; it should be `measured/nominal`. `board.py` applies `effective = square_mm * factor`, so for a measured 110 mm bar (nominal 100) the factor should be 1.1 but the code yields 0.909 -> metric scale ~17% wrong in the wrong direction. Does NOT affect detection, intrinsics K, or joint angles (all scale-invariant). Sidestepped in the validation run with `--measured-bar-mm 100` (factor 1.0). Confirm with a synthetic-projection test before fixing.
+- Test clips on disk: `clip.mp4` (540p, patient sitting, no board), `clip2.mp4` (540p, knee ext, board oblique/unreadable), `clip3.mp4` (1080p, knee ext, board readable — the good patient clip), `calib.mp4` (1080p, multi-angle calibration clip).
+- Remaining: fix the print-scale direction bug (with regression test); close the make/model device-id gap so calibration matches without the workaround; Phase E (motion export + muscle params schema).
 
 ## Scope Note
 
