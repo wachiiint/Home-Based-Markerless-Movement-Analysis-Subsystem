@@ -23,6 +23,12 @@ const COLOR_JOINT = 0x12201b;
 const COLOR_GRID = 0xd1ddd7;
 const COLOR_GRID_SUB = 0xe6f3ec;
 
+// Muscle overlay (M-A): length proxy coloured contracted (warm) -> stretched (cool).
+const COLOR_MUSCLE_SHORT = new THREE.Color(0xd9534f); // most shortened (length 0)
+const COLOR_MUSCLE_LONG = new THREE.Color(0x3b7fd0); // most stretched (length 1)
+const MUSCLE_OFFSET = 0.05; // lateral offset (units of pelvis-head) to fan tubes off the bone
+const MUSCLE_RADIUS = 0.03;
+
 // Rotate so the body stands upright and rescale to pelvis-head = 1 unit.
 function normalizeFrames(frames) {
   const up = new THREE.Vector3();
@@ -87,16 +93,50 @@ export function mountViewer(container) {
   let edges = [];
   let bones = [];
   let joints = [];
+  let muscles = [];
+  let musclesVisible = false;
   let frameIndex = 0;
 
   function clearSkeleton() {
-    for (const mesh of [...bones, ...joints]) {
+    for (const mesh of [...bones, ...joints, ...muscles.map((m) => m.mesh)]) {
       skeleton.remove(mesh);
       mesh.geometry.dispose();
       mesh.material.dispose();
     }
     bones = [];
     joints = [];
+    muscles = [];
+  }
+
+  function buildMuscles(payload) {
+    for (const def of payload.muscles || []) {
+      const geometry = new THREE.CylinderGeometry(MUSCLE_RADIUS, MUSCLE_RADIUS, 1, 12);
+      const material = new THREE.MeshStandardMaterial({ color: COLOR_MUSCLE_SHORT.clone(), roughness: 0.6 });
+      const mesh = new THREE.Mesh(geometry, material);
+      mesh.visible = musclesVisible;
+      skeleton.add(mesh);
+      muscles.push({ mesh, a: def.joints[0], b: def.joints[def.joints.length - 1], offset: def.offset, length: def.length });
+    }
+  }
+
+  // Lay one muscle tube along its origin->insertion segment, pushed sideways off
+  // the bone (so antagonists separate) and coloured by its per-frame length.
+  function placeMuscle(muscle, pose) {
+    const start = pose[muscle.a];
+    const end = pose[muscle.b];
+    const direction = new THREE.Vector3().subVectors(end, start);
+    const length = direction.length();
+    if (length < 1e-6) return;
+    direction.normalize();
+    let perp = new THREE.Vector3().crossVectors(direction, UP);
+    if (perp.lengthSq() < 1e-6) perp = new THREE.Vector3(1, 0, 0);
+    const ap = new THREE.Vector3().crossVectors(direction, perp.normalize()).normalize();
+    const mid = new THREE.Vector3().addVectors(start, end).multiplyScalar(0.5).addScaledVector(ap, muscle.offset * MUSCLE_OFFSET);
+    muscle.mesh.position.copy(mid);
+    muscle.mesh.scale.set(1, length * 0.92, 1);
+    muscle.mesh.quaternion.setFromUnitVectors(UP, direction);
+    const value = muscle.length[Math.min(frameIndex, muscle.length.length - 1)];
+    muscle.mesh.material.color.copy(COLOR_MUSCLE_SHORT).lerp(COLOR_MUSCLE_LONG, value);
   }
 
   function buildSkeleton(payload) {
@@ -116,6 +156,7 @@ export function mountViewer(container) {
       skeleton.add(mesh);
       bones.push(mesh);
     }
+    buildMuscles(payload);
   }
 
   function setFrame(index) {
@@ -133,6 +174,7 @@ export function mountViewer(container) {
       mesh.scale.set(1, length, 1);
       if (length > 1e-6) mesh.quaternion.setFromUnitVectors(UP, direction.normalize());
     });
+    if (musclesVisible) muscles.forEach((muscle) => placeMuscle(muscle, pose));
   }
 
   // Drop the skeleton so the lowest joint of the whole clip rests on the grid.
@@ -177,6 +219,15 @@ export function mountViewer(container) {
     setFrame(index) {
       setFrame(index);
       render();
+    },
+    setMusclesVisible(visible) {
+      musclesVisible = visible;
+      muscles.forEach((muscle) => { muscle.mesh.visible = visible; });
+      if (visible && frames.length) muscles.forEach((muscle) => placeMuscle(muscle, frames[frameIndex]));
+      render();
+    },
+    get hasMuscles() {
+      return muscles.length > 0;
     },
     get frameCount() {
       return frames.length;

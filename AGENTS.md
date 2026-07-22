@@ -3,6 +3,7 @@
 ## Module Map
 
 - `app/main.py`: FastAPI app, lifespan, routes, and exception handlers.
+- `app/__main__.py`: `python -m app` server runner; sets `timeout_graceful_shutdown` so Ctrl+C stops the server on Windows.
 - `app/core/`: settings, security, and logging.
 - `app/schemas/`: request enums and response models.
 - `app/services/`: video handling, pose adapters, kinematics, quality, screening, and response mapping.
@@ -46,11 +47,63 @@
 - Weights present: `models/motionbert_lite.onnx` (64 MB). `.env` sets `ENABLE_3D=true` + `MOTIONBERT_MODEL_PATH=models/motionbert_lite.onnx` (`.env.example` keeps `ENABLE_3D=false` as the safe default). ONNX input name is `keypoints_2d`; `validate_lifter_io()` passes; `build_lifter` returns a working `MotionBertAdapter` and `pose_3d` is populated end-to-end.
 - First successful metric-3D run (clip3.mp4, 1080x1920, seated knee extension, board flat on floor): `analysis_mode=3d`, `joint_angles_3d={knee_flexion_max 173.59, min 71.83, rom 101.76}` (sensible), real `transformation_matrix_6dof` present, `scale_mm_per_unit=2419 (feet_floor)`, `board_diagnostics.recommendation=ok` (board detected in 150/152 frames). Two non-blocking `guard_warnings`: device_id derived from resolution only (low confidence), and scale_uncertain (feet-floor 2419 vs height 2015.7 differ ~17%). Joint angles are scale-invariant, so they are trustworthy despite the scale uncertainty.
 - Integration gaps:
-  1. (open) Resolution must match between the calibration clip and the patient clip because `device_id` is keyed on resolution; the board also only reads reliably at 1080p (540p oblique gave 0 markers). Calibrate at the same resolution as the patient clip.
+  1. (SURFACED, not eliminated) Resolution must match between the calibration clip and the patient clip because `device_id` is keyed on resolution (width×height are hashed into the id); the board also only reads reliably at 1080p (540p oblique gave 0 markers). Calibrate at the same resolution as the patient clip. The demo no longer fails *silently*: the device picker warns before submit when the selected device's resolution ≠ the uploaded clip's, and the analysis panel shows a post-run notice (from `guard_warnings`/`board_diagnostics`) explaining any 2D fallback — see "Calibration Guard Surfacing" below.
   2. (FIXED) make/model device-id gap: the assess request now accepts optional `device_make`/`device_model` form fields (`main.py`), passed through `analyze_video` into `extract_capture_metadata`, so a device calibrated with `--make/--model` matches without the resolution_only workaround.
   3. (FIXED) print-scale direction: `print_verify.compute_print_scale` now returns `factor = measured/nominal` (was `nominal/measured`), with an updated docstring and the `test_print_scale_direction_recovers_metric_translation` synthetic-projection regression test.
 - Test clips on disk: `clip.mp4` (540p, patient sitting, no board), `clip2.mp4` (540p, knee ext, board oblique/unreadable), `clip3.mp4` (1080p, knee ext, board readable — the good patient clip), `calib.mp4` (1080p, multi-angle calibration clip).
-- Remaining: the resolution-match constraint (gap 1); Phase E (motion export + muscle params schema).
+- Remaining: Phase E (motion export + muscle params schema); the muscle-overlay demo (M-A, in progress).
+
+### Ctrl+C Shutdown Fix (2026-07-23)
+
+- Changed files: `app/__main__.py` (new), `README.md`, `docs/01-getting-started.md`.
+- Symptom: on Windows, `uv run uvicorn app.main:app` hung at "Shutting down" after Ctrl+C and the
+  shell had to be killed. Cause: uvicorn's default `timeout_graceful_shutdown=None` waits forever for
+  lingering connections, and an open browser tab / paused `<video>` (keep-alive + range requests)
+  never closes on its own. The signal *was* received (shutdown started) — it just never finished.
+- Fix: a `python -m app` runner calls `uvicorn.run(..., timeout_graceful_shutdown=5)` so Ctrl+C
+  force-closes stragglers after 5s. Docs now recommend `uv run python -m app` (PORT env var);
+  the raw-uvicorn alternative gets `--timeout-graceful-shutdown 5`.
+- The `ConnectionResetError [WinError 10054]` traceback on video seek is separate and harmless
+  (ProactorEventLoop noise when the browser resets a range-request socket), not the hang.
+
+### Calibration Guard Surfacing (2026-07-23)
+
+- Changed files: `app/static/{index.html,app.js,styles.css}` only (no backend change — the warnings
+  already existed in `CameraCalibration.warnings` -> `guard_warnings`, they just were not shown).
+- Problem: `guard_warnings`, `board_diagnostics`, and `analysis_mode` were all in the payload but the
+  demo rendered none of them, so a calibrated-3D run that fell back to 2D (most often a resolution
+  mismatch — `device_id` hashes width×height, so a different resolution = "device not calibrated")
+  looked like a silent, unexplained 2D result.
+- What changed:
+  - Proactive: the 01/INPUT device picker stores each device's `image_size` on the option and, on
+    file/device change, compares it to the uploaded clip's `videoWidth×videoHeight`; a mismatch shows
+    an amber hint *before* submit. Best-effort (browser dims can differ from the backend for rotated
+    clips); the authoritative reason still comes post-run.
+  - Post-run: `renderAnalysisNotice` shows a green "Metric 3D active" note when `analysis_mode==3d`,
+    or an amber "2D analysis — metric 3D unavailable: <reasons>" note built from `guard_warnings` +
+    `board_diagnostics.message` otherwise.
+
+### Muscle Overlay (M-A) (2026-07-23)
+
+- Changed files: `app/services/lifting/muscles.py` (new), `app/services/lifting/pose3d_export.py`,
+  `app/static/{viewer3d.js,index.html,app.js,styles.css}`, `tests/test_muscles.py` (new).
+- What it does: a labeled, kinematic **muscle-length overlay** on the 3D skeleton viewer.
+  `compute_muscle_overlay(keypoints_3d)` models 5 major lower-limb muscles per leg (quadriceps,
+  hamstrings, gastrocnemius, iliopsoas, gluteals) as length proxies driven by the H36M17 joint angles
+  (knee = angle(hip,knee,ankle); hip = angle(thorax,hip,knee)). Each muscle's length is min-max
+  normalized to `[0, 1]` over the clip and ships in the `pose_3d` payload under `muscles`.
+- Honesty: DISPLAY ONLY and explicitly a *geometry* proxy — a single camera has no GRF, so muscle
+  *force/activation* is not computed. Physiological length *direction* is correct (a knee extensor
+  stretches as the knee flexes); the drawn tube geometry is illustrative. Kept out of
+  `MovementAssessmentResponse`; rides only the demo display payload.
+- Viewer (`viewer3d.js`): each muscle is a tube along its origin→insertion segment, fanned off the
+  bone by a small perpendicular offset, colored contracted (warm) → stretched (cool) per frame.
+  Toggle button ("Muscles: off/on") + gradient legend; hidden unless the payload carries muscles
+  (any real lift does — calibration not required, only the MotionBERT lift). The synthetic
+  "Preview 3D" sample (`sample_skeleton.js`) reproduces the same `muscles` array in JS (mirroring
+  `muscles.py` — keep the two in sync), so the overlay is visible in the preview without a real clip.
+- Tests (`test_muscles.py`): extensor stretches / flexor shortens as the knee flexes; static pose →
+  neutral 0.5; both legs covered; empty sequence → `[]`.
 
 ### Smoothness (2026-07-22)
 
@@ -126,7 +179,7 @@ scale-invariant, so they are trustworthy regardless of the metric-scale path.
 | Q2 | `symmetry_index_score` (both sides) | ~2–3d | side-select refactor | Med | Medium | Left/right asymmetry indicator | [x] |
 | Q3 | `gait_parameters` (cadence, step/stride) | ~4–6d | new walking task + foot-contact + F1 | High | Low | Only meaningful for gait clips | [ ] |
 | Q4 | `compensation` (trunk lean, hip hike) | ~3–5d | multi-joint analysis | High | Low | Fuzzy clinical definition | [ ] |
-| M-A | Visual muscle overlay on 3D skeleton (kinematic proxy, labeled) | ~3–5d | working 3D viewer | Med | High (demo) | Impressive demo now, no OpenSim needed | [ ] |
+| M-A | Visual muscle overlay on 3D skeleton (kinematic proxy, labeled) | ~3–5d | working 3D viewer | Med | High (demo) | Impressive demo now, no OpenSim needed | [x] |
 | M-B | Real OpenSim `gait2392` export (Phase E1–E6: `.mot` + muscle-param schema) | ~1.5–3wk | F2, task→coord sign/offset map | High | Medium | Scientifically-grounded backend | [ ] |
 | CT | CT-driven muscle F0 (PCSA) | — | CT scan (unavailable) | — | Deferred | Patient-specific muscle force | [ ] |
 

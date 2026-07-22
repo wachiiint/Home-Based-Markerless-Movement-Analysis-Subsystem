@@ -49,6 +49,7 @@
         </label>
         <input type="hidden" name="device_make" id="device-make">
         <input type="hidden" name="device_model" id="device-model">
+        <p id="device-warning" class="inline-warning" hidden></p>
         <label class="dropzone" for="file"><span class="upload-icon">↑</span><strong id="file-name">Choose a video file</strong><small>Maximum 100 MB</small><input id="file" name="file" type="file" accept="video/mp4,video/quicktime,video/x-msvideo" required></label>
         <video id="source-video" class="source-video" controls hidden></video>
         <button id="submit-button" class="primary-button" type="submit"><span>Analyze movement</span><span class="button-arrow">→</span></button>
@@ -67,6 +68,7 @@
 
     <section id="metrics-section" class="panel metrics-panel" hidden>
       <div class="panel-heading"><div><p class="eyebrow">03 / ANALYSIS</p><h2>Movement summary</h2></div><span class="step">Decision support only</span></div>
+      <p id="analysis-notice" class="inline-notice" hidden></p>
       <div class="summary-grid"><div class="risk-card"><span class="metric-label">Screening risk <small class="hint">(worse leg)</small></span><strong id="risk-value">—</strong><small id="risk-flags">No flags</small></div><div><span class="metric-label">Confidence</span><strong id="confidence-value">—</strong></div><div><span class="metric-label">Sides analyzed</span><strong id="side-value">—</strong></div><div><span class="metric-label">Valid frame ratio</span><strong id="valid-value">—</strong></div></div>
       <div class="metric-compare" id="angle-metrics"></div>
       <p class="disclaimer">This local tool is for technical testing and decision support. It is not a clinical diagnosis.</p>
@@ -78,8 +80,13 @@
       <div id="viewer-canvas" class="viewer-canvas"></div>
       <div class="viewer-controls">
         <button id="viewer-play" class="ghost-button" type="button">Play</button>
+        <button id="muscle-toggle" class="ghost-button" type="button" hidden>Muscles: off</button>
         <input id="viewer-frame" type="range" min="0" max="0" value="0" step="1">
         <span id="viewer-frame-label" class="metric-label">0 / 0</span>
+      </div>
+      <div id="muscle-legend" class="muscle-legend" hidden>
+        <span class="muscle-scale" aria-hidden="true"></span>
+        <span>Contracted → stretched — kinematic muscle-<em>length</em> proxy (geometry, not force). Quadriceps, hamstrings, gastrocnemius, iliopsoas, gluteals, per leg.</span>
       </div>
       <p class="disclaimer">Drag to rotate, scroll to zoom. Reconstructed from a single camera: shape is relative, not measured in millimetres.</p>
     </section>

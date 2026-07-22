@@ -48,8 +48,15 @@ affects the pipeline.
 ## 3. Run the service
 
 ```powershell
-uv run uvicorn app.main:app --port 8000
+uv run python -m app          # port via $env:PORT (default 8000)
 ```
+
+Prefer `python -m app` over `uvicorn app.main:app` directly: the runner sets a graceful-shutdown
+timeout so **Ctrl+C stops the server cleanly** on Windows. Plain uvicorn waits forever for lingering
+connections (an open browser tab, a paused `<video>`) and hangs at "Shutting down", forcing you to
+kill the shell. If you must call uvicorn directly, add `--timeout-graceful-shutdown 5`. (The
+occasional `ConnectionResetError [WinError 10054]` on video seek is a harmless ProactorEventLoop
+message, not a crash.)
 
 With `FAKE_MODE=false`, the **first** startup downloads the RTMPose/YOLOX ONNX models. Later
 startups reuse the local `rtmlib` cache, so they are fast.
@@ -80,7 +87,7 @@ The browser demo lets you upload a video and see the annotated skeleton, ROM met
 and screening output. It uses a same-origin endpoint and does **not** expose the service key.
 
 ```powershell
-uv run uvicorn app.main:app --port 8011
+$env:PORT=8011; uv run python -m app
 ```
 
 Then open [http://127.0.0.1:8011/](http://127.0.0.1:8011/). Keep `FAKE_MODE=false` to see real
