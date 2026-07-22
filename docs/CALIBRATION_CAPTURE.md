@@ -94,5 +94,5 @@ The steps above prove the pipeline *engages* on a real board. Proving it is
 *accurate* additionally needs a reference: measure hip/knee ROM with a
 goniometer during the same clip and compare against `joint_angles_3d`, and check
 `scale_mm_per_unit` against a known length. Target the ~6° clinical-acceptability
-band from `docs/EVALUATION_PLAN.md`. Record the first real board clip + its
+band from `docs/05-evaluation-plan.md`. Record the first real board clip + its
 reference as the first non-synthetic fixture when hardware is available.
