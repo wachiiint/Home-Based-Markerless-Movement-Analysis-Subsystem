@@ -114,6 +114,47 @@ calibrateForm.addEventListener('submit', async (event) => {
 const percent = (value) => `${(Number(value) * 100).toFixed(0)}%`;
 const label = (key) => key.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
+// Both legs are reported: joint_angles keys are side-prefixed (left_/right_) and
+// smoothness is nested per side. Render one Left|Right row per metric so the
+// clinician compares sides at a glance.
+function renderComparison(metrics) {
+  const rows = new Map(); // label -> {left, right}
+  const cell = (name, side, text) => {
+    if (!rows.has(name)) rows.set(name, { left: '—', right: '—' });
+    rows.get(name)[side] = text;
+  };
+  for (const [key, value] of Object.entries(metrics.joint_angles || {})) {
+    const side = key.startsWith('left_') ? 'left' : key.startsWith('right_') ? 'right' : null;
+    if (!side) continue;
+    const name = label(key.replace(/^(left|right)_/, '').replace(/_deg$/, ''));
+    cell(name, side, `${Number(value).toFixed(1)}°`);
+  }
+  for (const [key, value] of Object.entries(metrics.joint_angles_3d || {})) {
+    const side = key.startsWith('left_') ? 'left' : key.startsWith('right_') ? 'right' : null;
+    if (!side) continue;
+    const name = `${label(key.replace(/^(left|right)_/, '').replace(/_3d$/, '').replace(/_deg$/, ''))} (3D)`;
+    cell(name, side, `${Number(value).toFixed(1)}°`);
+  }
+  const smooth = metrics.smoothness || {};
+  const smoothMetric = (name, prop, fmt) => {
+    for (const side of ['left', 'right']) {
+      if (smooth[side] && prop in smooth[side]) cell(name, side, fmt(smooth[side][prop]));
+    }
+  };
+  smoothMetric('Smoothness (SPARC)', 'sparc', (v) => v.toFixed(2));
+  smoothMetric('Smoothness (LDLJ)', 'log_dimensionless_jerk', (v) => v.toFixed(2));
+  smoothMetric('Movement units', 'n_movement_units', (v) => String(v));
+
+  const body = [...rows.entries()]
+    .map(([name, v]) => `<tr><th>${name}</th><td>${v.left}</td><td>${v.right}</td></tr>`)
+    .join('');
+  const symmetry = metrics.symmetry_index_score;
+  const symmetryRow = symmetry != null
+    ? `<tr class="span-row"><th>Asymmetry (L/R)</th><td colspan="2">${(symmetry * 100).toFixed(1)}%</td></tr>`
+    : '';
+  return `<table class="compare-table"><thead><tr><th>Metric</th><th>Left</th><th>Right</th></tr></thead><tbody>${body}${symmetryRow}</tbody></table>`;
+}
+
 const viewerSection = document.querySelector('#viewer-section');
 const viewerState = document.querySelector('#viewer-state');
 const viewerWarning = document.querySelector('#viewer-warning');
@@ -239,13 +280,7 @@ form.addEventListener('submit', async (event) => {
     document.querySelector('#confidence-value').textContent = percent(screening.confidence_score);
     document.querySelector('#side-value').textContent = assessment.video_metadata.analyzed_side || '—';
     document.querySelector('#valid-value').textContent = percent(quality.valid_frame_ratio);
-    const angleCells = Object.entries(assessment.clinical_metrics.joint_angles).map(([key, value]) => `<div class="metric-cell"><span class="metric-label">${label(key)}</span><strong>${Number(value).toFixed(1)}°</strong></div>`);
-    const smoothness = assessment.clinical_metrics.smoothness || {};
-    const smoothnessCells = [];
-    if ('sparc' in smoothness) smoothnessCells.push(`<div class="metric-cell"><span class="metric-label">Smoothness (SPARC)</span><strong>${smoothness.sparc.toFixed(2)}</strong></div>`);
-    if ('log_dimensionless_jerk' in smoothness) smoothnessCells.push(`<div class="metric-cell"><span class="metric-label">Smoothness (LDLJ)</span><strong>${smoothness.log_dimensionless_jerk.toFixed(2)}</strong></div>`);
-    if ('n_movement_units' in smoothness) smoothnessCells.push(`<div class="metric-cell"><span class="metric-label">Movement units</span><strong>${smoothness.n_movement_units}</strong></div>`);
-    document.querySelector('#angle-metrics').innerHTML = angleCells.concat(smoothnessCells).join('');
+    document.querySelector('#angle-metrics').innerHTML = renderComparison(assessment.clinical_metrics);
     metricsSection.hidden = false;
     await showPose3d(payload.pose_3d_url);
   } catch (error) {

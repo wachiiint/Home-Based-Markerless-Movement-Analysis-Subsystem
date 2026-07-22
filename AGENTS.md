@@ -61,10 +61,56 @@
   negative = smoother), `log_dimensionless_jerk` (higher = smoother), `n_movement_units` (speed peaks),
   and `n_samples`. Computed on the EMA-smoothed angle series at `frame_sample_fps`; returns `{}` when
   there are too few frames or no movement (stays a best-effort placeholder). Shown in the demo analysis
-  panel. `build_fake_response` leaves it `{}`.
+  panel. `build_fake_response` leaves it `{}`. (As of the both-legs change it is nested per side:
+  `{"left": {...}, "right": {...}}`.)
 - Remaining placeholders (still empty by design): `gait_parameters` (needs a walking task +
-  foot-contact detection), `compensation` (multi-joint), `symmetry_index_score` (needs both sides
-  measured). See the roadmap table below.
+  foot-contact detection), `compensation` (multi-joint). See the roadmap table below.
+
+### Symmetry (2026-07-23)
+
+- Changed files: `app/services/analysis/symmetry.py` (new), `video_analysis.py`, `response_mapper.py`,
+  `app/static/app.js`, `tests/test_symmetry.py` (new), `tests/test_video_analysis_3d.py`.
+- What it does: fills `clinical_metrics.symmetry_index_score` with a normalized left/right asymmetry
+  index in `[0, 1]` — `|ROM_left - ROM_right| / (ROM_left + ROM_right)` (Robinson & Herzog Symmetry
+  Index rescaled from percent; `SI% = score * 200`). `0.0` = both legs swept an identical range;
+  toward `1.0` = one leg did nearly all the moving.
+- Side-select refactor (the Q2 dependency): per-side ROM is computed once for both legs and reused by
+  side selection and symmetry. (Superseded by the both-legs change below: this now lives in
+  `_analyze_both_legs`/`LegAnalysis`, and `_select_analyzed_side` takes that per-leg dict.) Per-side
+  ROM is measured on the EMA-smoothed series (matches the reported ROM).
+- Honest abstention: `compute_symmetry` returns `None` unless BOTH legs performed the movement
+  (each side's ROM ≥ the task's `borderline_rom_deg` and ≥ 4 valid frames). The unilateral task set
+  moves one leg while the other rests, so it abstains for those clips rather than reporting a spurious
+  ~1.0; it yields a real number only when both legs move (future bilateral task or a patient
+  exercising both sides in one clip). Shown as "Asymmetry (L/R) %" in the demo panel.
+  `build_fake_response` leaves it `None`.
+
+### Both-Legs Reporting (2026-07-23)
+
+- Changed files: `video_analysis.py`, `response_mapper.py`, `app/static/{app.js,index.html,styles.css}`,
+  `tests/test_video_analysis_3d.py`.
+- Rationale: finding "the" exercised leg and reporting only it hides the other side from the clinician.
+  We now analyze BOTH legs and report each; the doctor reads left vs right and decides. (The request/UI
+  still carry no `side` input — there was never one — so nothing about the instructed side is lost.)
+- What changed:
+  - `_analyze_leg` / `_analyze_both_legs` compute full per-leg 2D analysis (min/max/ROM, per-leg
+    valid-frame ratio + confidence, per-leg smoothness) for each usable leg. `LegAnalysis` is the
+    single source of truth for the report, side selection, symmetry, and screening.
+  - `clinical_metrics.joint_angles` now has **side-prefixed keys** (`left_knee_rom_deg`,
+    `right_knee_rom_deg`, …) — still `dict[str, float]`, so the contract shape is unchanged.
+    `response_mapper` gained a `joint_angles_override` param; the single-side form still serves
+    `build_fake_response` and the contract test.
+  - `smoothness` is now nested per side (`{"left": {...}, "right": {...}}`).
+  - Screening (`_screen_both_legs`): each leg is screened; the top-line `risk_level` is the **worse**
+    leg, and `flags` are side-tagged (e.g. `right: rom_below_borderline`).
+  - `video_metadata.analyzed_side` is `"both"` when two legs are usable, else the single side.
+  - `_select_analyzed_side` is kept but demoted to picking a *primary* leg (larger ROM) only for the
+    3D-viewer highlight and the representative `pose_quality` reading.
+  - `joint_angles_3d` also reports **both legs** (side-prefixed `_3d` keys, e.g.
+    `left_knee_rom_deg_3d`): `_augment_with_3d` takes `report_sides` and loops the usable legs
+    (H36M17 carries both). Surfaced as "… (3D)" rows in the Panel 3 table when calibrated.
+  - Demo Panel 3 (`03 / ANALYSIS`) is now a compact, scrollable **Left vs Right comparison table**
+    (`renderComparison` in `app.js`, `.compare-table` CSS), replacing the flat metric grid.
 
 ## Roadmap / Task Plan (2026-07-22)
 
@@ -77,7 +123,7 @@ scale-invariant, so they are trustworthy regardless of the metric-scale path.
 | F1 | Fix print-scale direction bug | ~0.5d | — | Low | High | Correct metric distances | [x] |
 | F2 | Surface per-frame angle trajectory | ~0.5–1d | — | Low | High | Unlocks smoothness + motion export | [x] |
 | Q1 | `smoothness` from angle curve (SPARC/LDLJ/units) | ~1–2d | F2 | Low–Med | High | Fills a real placeholder, clinically meaningful | [x] |
-| Q2 | `symmetry_index_score` (both sides) | ~2–3d | side-select refactor | Med | Medium | Left/right asymmetry indicator | [ ] |
+| Q2 | `symmetry_index_score` (both sides) | ~2–3d | side-select refactor | Med | Medium | Left/right asymmetry indicator | [x] |
 | Q3 | `gait_parameters` (cadence, step/stride) | ~4–6d | new walking task + foot-contact + F1 | High | Low | Only meaningful for gait clips | [ ] |
 | Q4 | `compensation` (trunk lean, hip hike) | ~3–5d | multi-joint analysis | High | Low | Fuzzy clinical definition | [ ] |
 | M-A | Visual muscle overlay on 3D skeleton (kinematic proxy, labeled) | ~3–5d | working 3D viewer | Med | High (demo) | Impressive demo now, no OpenSim needed | [ ] |
@@ -97,7 +143,9 @@ out of scope for single camera; both M-A and M-B show muscle *geometry/length*, 
 - Current progress: annotated skeleton videos should render and play in the demo UI instead of being treated as downloads.
 - Remaining: verify with a real RTMPose inference run in the target browser; codec support may still depend on the local OpenCV build.
 
-V1 is a local decision-support/demo service. It is not a clinical diagnosis system.
+This is a local decision-support/demo service. It has grown past the original v1 scope — it now does
+2D + single-camera 3D, ChArUco calibration, smoothness, left/right symmetry, and both-legs reporting.
+It is still **not** a clinical diagnosis system.
 
 ### Literature Review and Master Requirement Alignment
 
@@ -115,9 +163,9 @@ V1 is a local decision-support/demo service. It is not a clinical diagnosis syst
   inference/screening pipeline itself.
 - Remaining: decide whether to add a per-joint/view correction step before
   `three_point_angle` -> `screen_rom`, and whether/how to empirically validate
-  `expected_rom_deg`/`borderline_rom_deg` in `task_config.py`. The master schema's
-  `gait_parameters`, `compensation`, `smoothness`, and `symmetry_index_score` fields remain
-  intentionally empty/`None` in v1 per `EVALUATION_PLAN.md`.
+  `expected_rom_deg`/`borderline_rom_deg` in `task_config.py`. Of the master schema's initially-empty
+  fields, `smoothness` and `symmetry_index_score` are now populated (see the sections above);
+  `gait_parameters` and `compensation` remain empty by design (see the roadmap table).
 
 ## Task Sync Note
 

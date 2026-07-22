@@ -5,7 +5,16 @@ from app.models.calibration import BoardDetectionDiagnostics, CameraCalibration,
 from app.schemas.movement import TaskType
 from app.services.lifting.lifter import StubLifter
 from app.services.pose.pose_sequence import FramePose2D, PoseSequence
-from app.services.video_analysis import _augment_with_3d, _select_analyzed_side
+from app.services.video_analysis import (
+    _analyze_both_legs,
+    _augment_with_3d,
+    _screen_both_legs,
+    _select_analyzed_side,
+)
+
+
+def _selected_side(seq, task_type):
+    return _select_analyzed_side(_analyze_both_legs(seq, task_type, SETTINGS))
 
 SETTINGS = Settings()
 
@@ -95,12 +104,26 @@ def _one_leg_moving_sequence(moving="right", t=8):
 
 def test_select_side_picks_moving_leg_over_first_frame_confidence():
     seq = _one_leg_moving_sequence(moving="right")
-    assert _select_analyzed_side(seq, TaskType.KNEE_EXTENSION, SETTINGS.min_keypoint_confidence) == "right"
+    assert _selected_side(seq, TaskType.KNEE_EXTENSION) == "right"
 
 
 def test_select_side_symmetric_left():
     seq = _one_leg_moving_sequence(moving="left")
-    assert _select_analyzed_side(seq, TaskType.KNEE_EXTENSION, SETTINGS.min_keypoint_confidence) == "left"
+    assert _selected_side(seq, TaskType.KNEE_EXTENSION) == "left"
+
+
+def test_reports_both_legs():
+    legs = _analyze_both_legs(_one_leg_moving_sequence(moving="right"), TaskType.KNEE_EXTENSION, SETTINGS)
+    assert set(legs) == {"left", "right"}  # both legs are analyzed, not just the mover
+    assert legs["right"].rom > legs["left"].rom
+
+
+def test_worse_leg_drives_screening_risk():
+    # Right leg sweeps a wide arc; the still left leg has ~0 ROM (below borderline).
+    legs = _analyze_both_legs(_one_leg_moving_sequence(moving="right"), TaskType.KNEE_EXTENSION, SETTINGS)
+    risk, _conf, flags = _screen_both_legs(legs, TaskType.KNEE_EXTENSION, SETTINGS)
+    assert risk == "high"
+    assert any(flag.startswith("left:") for flag in flags)  # the still leg is flagged, side-tagged
 
 
 def test_no_lifter_stays_2d():
@@ -121,7 +144,9 @@ def test_calibrated_knee_produces_3d():
     calib = _FakeCalibrator(_ok_calibration(), _diag(detected=True))
     result = _augment_with_3d(_rigid_sequence(), TaskType.KNEE_FLEXION, "right", SETTINGS, StubLifter(), calib, {}, None)
     assert result.analysis_mode == "3d"
-    assert "knee_rom_deg_3d" in result.joint_angles_3d
+    # both legs reported, side-prefixed
+    assert "left_knee_rom_deg_3d" in result.joint_angles_3d
+    assert "right_knee_rom_deg_3d" in result.joint_angles_3d
     assert result.transformation_6dof is not None
 
 
