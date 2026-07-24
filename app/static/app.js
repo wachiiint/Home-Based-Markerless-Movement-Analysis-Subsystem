@@ -20,13 +20,205 @@ fileInput.addEventListener('change', () => {
   sourceVideo.hidden = false;
 });
 
+// ---- Calibrated-device picker (01 / INPUT) --------------------------------
+const deviceSelect = document.querySelector('#device-select');
+const deviceMake = document.querySelector('#device-make');
+const deviceModel = document.querySelector('#device-model');
+
+async function loadDevices() {
+  // Keep the first "Auto" option, replace the rest on every refresh.
+  while (deviceSelect.options.length > 1) deviceSelect.remove(1);
+  try {
+    const response = await fetch('/api/demo/devices');
+    if (!response.ok) return;
+    const { devices } = await response.json();
+    for (const d of devices) {
+      const make = d.make || '';
+      const model = d.model || '';
+      // Only make/model-bearing devices are addressable from the patient clip;
+      // resolution-only calibrations are reached via the "Auto" option.
+      if (!make && !model) continue;
+      const size = d.image_size ? `${d.image_size[0]}×${d.image_size[1]}` : '';
+      const option = document.createElement('option');
+      option.value = d.device_id;
+      option.dataset.make = make;
+      option.dataset.model = model;
+      if (d.image_size) {
+        option.dataset.w = d.image_size[0];
+        option.dataset.h = d.image_size[1];
+      }
+      option.textContent = `${[make, model].filter(Boolean).join(' ')} · ${size}${d.status !== 'valid' ? ` (${d.status})` : ''}`;
+      deviceSelect.appendChild(option);
+    }
+  } catch (error) {
+    console.error(error);
+  }
+}
+
+// Proactively warn when the chosen calibrated device's resolution won't match the
+// uploaded clip: metric 3D is keyed on resolution, so a mismatch silently drops to
+// 2D. This is a best-effort heads-up (browser videoWidth can differ from the
+// backend for rotated clips); the authoritative reason still comes back post-run.
+let clipDims = null;
+
+function checkResolutionMatch() {
+  const warn = document.querySelector('#device-warning');
+  const option = deviceSelect.selectedOptions[0];
+  const dw = Number(option?.dataset.w || 0);
+  const dh = Number(option?.dataset.h || 0);
+  if (!dw || !clipDims) {
+    warn.hidden = true;
+    return;
+  }
+  if (dw === clipDims.w && dh === clipDims.h) {
+    warn.hidden = true;
+    return;
+  }
+  warn.hidden = false;
+  warn.textContent = `Selected device was calibrated at ${dw}×${dh}, but this clip is ${clipDims.w}×${clipDims.h}. Metric 3D needs a matching resolution — it will fall back to 2D. Recalibrate at ${clipDims.w}×${clipDims.h}, or use a clip recorded at ${dw}×${dh}.`;
+}
+
+deviceSelect.addEventListener('change', () => {
+  const option = deviceSelect.selectedOptions[0];
+  deviceMake.value = option?.dataset.make || '';
+  deviceModel.value = option?.dataset.model || '';
+  checkResolutionMatch();
+});
+
+sourceVideo.addEventListener('loadedmetadata', () => {
+  clipDims = { w: sourceVideo.videoWidth, h: sourceVideo.videoHeight };
+  checkResolutionMatch();
+});
+
+loadDevices();
+
+// ---- Camera calibration (00 / CALIBRATION) --------------------------------
+const calibrateForm = document.querySelector('#calibrate-form');
+const calibFileInput = document.querySelector('#calib-file');
+const calibFileName = document.querySelector('#calib-file-name');
+const calibrateButton = document.querySelector('#calibrate-button');
+const calibrateMessage = document.querySelector('#calibrate-message');
+const calibrateResult = document.querySelector('#calibrate-result');
+
+calibFileInput.addEventListener('change', () => {
+  const file = calibFileInput.files[0];
+  if (file) calibFileName.textContent = file.name;
+});
+
+calibrateForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  calibrateButton.disabled = true;
+  calibrateButton.querySelector('span').textContent = 'Calibrating…';
+  calibrateMessage.textContent = '';
+  calibrateResult.hidden = true;
+  try {
+    const response = await fetch('/api/demo/calibrate', { method: 'POST', body: new FormData(calibrateForm) });
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || 'Calibration failed');
+    const warnings = (payload.warnings || []).map((w) => `<li>${w}</li>`).join('');
+    const rows = [
+      ['Status', payload.ok ? 'Calibrated ✓' : `Failed (${payload.status})`],
+      ['Device ID', payload.device_id],
+      ['Metadata source', payload.source],
+      ['Resolution', payload.image_size ? `${payload.image_size[0]}×${payload.image_size[1]}` : '—'],
+      ['Frames sampled', payload.frames_sampled],
+    ];
+    if (payload.ok) {
+      rows.push(['Reprojection error', `${payload.reproj_error_px} px`]);
+      rows.push(['Print scale factor', payload.print_scale_factor]);
+    }
+    calibrateResult.className = `calibrate-result ${payload.ok ? 'ok' : 'fail'}`;
+    calibrateResult.innerHTML =
+      `<p class="calibrate-result-msg">${payload.message || ''}</p>` +
+      '<div class="metric-table">' +
+      rows.map(([k, v]) => `<div class="metric-cell"><span class="metric-label">${k}</span><strong>${v}</strong></div>`).join('') +
+      '</div>' +
+      (warnings ? `<ul class="calibrate-warnings">${warnings}</ul>` : '');
+    calibrateResult.hidden = false;
+    if (payload.ok) await loadDevices();  // surface the new device in the 01/INPUT picker
+  } catch (error) {
+    calibrateMessage.textContent = error.message;
+  } finally {
+    calibrateButton.disabled = false;
+    calibrateButton.querySelector('span').textContent = 'Calibrate device';
+  }
+});
+
 const percent = (value) => `${(Number(value) * 100).toFixed(0)}%`;
 const label = (key) => key.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+
+// Both legs are reported: joint_angles keys are side-prefixed (left_/right_) and
+// smoothness is nested per side. Render one Left|Right row per metric so the
+// clinician compares sides at a glance.
+function renderComparison(metrics) {
+  const rows = new Map(); // label -> {left, right}
+  const cell = (name, side, text) => {
+    if (!rows.has(name)) rows.set(name, { left: '—', right: '—' });
+    rows.get(name)[side] = text;
+  };
+  for (const [key, value] of Object.entries(metrics.joint_angles || {})) {
+    const side = key.startsWith('left_') ? 'left' : key.startsWith('right_') ? 'right' : null;
+    if (!side) continue;
+    const name = label(key.replace(/^(left|right)_/, '').replace(/_deg$/, ''));
+    cell(name, side, `${Number(value).toFixed(1)}°`);
+  }
+  for (const [key, value] of Object.entries(metrics.joint_angles_3d || {})) {
+    const side = key.startsWith('left_') ? 'left' : key.startsWith('right_') ? 'right' : null;
+    if (!side) continue;
+    const name = `${label(key.replace(/^(left|right)_/, '').replace(/_3d$/, '').replace(/_deg$/, ''))} (3D)`;
+    cell(name, side, `${Number(value).toFixed(1)}°`);
+  }
+  const smooth = metrics.smoothness || {};
+  const smoothMetric = (name, prop, fmt) => {
+    for (const side of ['left', 'right']) {
+      if (smooth[side] && prop in smooth[side]) cell(name, side, fmt(smooth[side][prop]));
+    }
+  };
+  smoothMetric('Smoothness (SPARC)', 'sparc', (v) => v.toFixed(2));
+  smoothMetric('Smoothness (LDLJ)', 'log_dimensionless_jerk', (v) => v.toFixed(2));
+  smoothMetric('Movement units', 'n_movement_units', (v) => String(v));
+
+  const body = [...rows.entries()]
+    .map(([name, v]) => `<tr><th>${name}</th><td>${v.left}</td><td>${v.right}</td></tr>`)
+    .join('');
+  const symmetry = metrics.symmetry_index_score;
+  const symmetryRow = symmetry != null
+    ? `<tr class="span-row"><th>Asymmetry (L/R)</th><td colspan="2">${(symmetry * 100).toFixed(1)}%</td></tr>`
+    : '';
+  return `<table class="compare-table"><thead><tr><th>Metric</th><th>Left</th><th>Right</th></tr></thead><tbody>${body}${symmetryRow}</tbody></table>`;
+}
+
+// Explain the analysis mode instead of silently returning a 2D result: when 3D
+// was expected but did not happen, say why (calibration/board guard warnings).
+function renderAnalysisNotice(assessment) {
+  const notice = document.querySelector('#analysis-notice');
+  const warnings = assessment.guard_warnings || [];
+  const board = assessment.board_diagnostics;
+  if (assessment.analysis_mode === '3d') {
+    notice.className = 'inline-notice ok';
+    notice.hidden = false;
+    notice.textContent = `Metric 3D active (calibrated).${warnings.length ? ` Notes: ${warnings.join('; ')}` : ''}`;
+    return;
+  }
+  const reasons = [...warnings];
+  if (board && board.recommendation && board.recommendation !== 'ok') {
+    reasons.push(board.message || `board ${board.recommendation}`);
+  }
+  if (reasons.length) {
+    notice.className = 'inline-notice warn';
+    notice.hidden = false;
+    notice.textContent = `2D analysis — metric 3D unavailable: ${reasons.join('; ')}`;
+  } else {
+    notice.hidden = true;
+  }
+}
 
 const viewerSection = document.querySelector('#viewer-section');
 const viewerState = document.querySelector('#viewer-state');
 const viewerWarning = document.querySelector('#viewer-warning');
 const playButton = document.querySelector('#viewer-play');
+const muscleToggle = document.querySelector('#muscle-toggle');
+const muscleLegend = document.querySelector('#muscle-legend');
 const frameSlider = document.querySelector('#viewer-frame');
 const frameLabel = document.querySelector('#viewer-frame-label');
 
@@ -65,6 +257,26 @@ frameSlider.addEventListener('input', () => {
   updateFrameLabel();
 });
 
+let musclesOn = false;
+muscleToggle.addEventListener('click', () => {
+  if (!viewer || !viewer.hasMuscles) return;
+  musclesOn = !musclesOn;
+  viewer.setMusclesVisible(musclesOn);
+  muscleToggle.textContent = `Muscles: ${musclesOn ? 'on' : 'off'}`;
+  muscleLegend.hidden = !musclesOn;
+});
+
+// A fresh clip resets the muscle overlay; the toggle only appears when the
+// payload actually carries muscle data (metric-3D lifts do).
+function setupMuscleToggle() {
+  musclesOn = false;
+  muscleLegend.hidden = true;
+  const available = Boolean(viewer && viewer.hasMuscles);
+  muscleToggle.hidden = !available;
+  muscleToggle.textContent = 'Muscles: off';
+  if (available) viewer.setMusclesVisible(false);
+}
+
 // DEV/PREVIEW: feed a synthetic walking skeleton into the 04/3D viewer so it can
 // be seen before real MotionBERT weights exist. Remove together with
 // sample_skeleton.js and the #preview-3d button in index.html.
@@ -78,6 +290,7 @@ document.querySelector('#preview-3d').addEventListener('click', () => {
   frameSlider.max = Math.max(0, count - 1);
   frameSlider.value = 0;
   updateFrameLabel();
+  setupMuscleToggle();
   viewerState.textContent = 'Sample data (synthetic)';
   viewerWarning.hidden = false;
   viewerWarning.textContent = 'Synthetic preview — not a real analysis. Shows how the viewer renders while waiting for the MotionBERT weights.';
@@ -105,6 +318,7 @@ async function showPose3d(url) {
     frameSlider.max = Math.max(0, count - 1);
     frameSlider.value = 0;
     updateFrameLabel();
+    setupMuscleToggle();
     viewerState.textContent = payload.analysis_mode === '3d' ? 'Calibrated 3D' : 'Uncalibrated lift';
     if (payload.lift_reliable) {
       viewerWarning.hidden = true;
@@ -148,7 +362,8 @@ form.addEventListener('submit', async (event) => {
     document.querySelector('#confidence-value').textContent = percent(screening.confidence_score);
     document.querySelector('#side-value').textContent = assessment.video_metadata.analyzed_side || '—';
     document.querySelector('#valid-value').textContent = percent(quality.valid_frame_ratio);
-    document.querySelector('#angle-metrics').innerHTML = Object.entries(assessment.clinical_metrics.joint_angles).map(([key, value]) => `<div class="metric-cell"><span class="metric-label">${label(key)}</span><strong>${Number(value).toFixed(1)}°</strong></div>`).join('');
+    document.querySelector('#angle-metrics').innerHTML = renderComparison(assessment.clinical_metrics);
+    renderAnalysisNotice(assessment);
     metricsSection.hidden = false;
     await showPose3d(payload.pose_3d_url);
   } catch (error) {

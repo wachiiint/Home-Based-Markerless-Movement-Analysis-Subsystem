@@ -53,7 +53,7 @@ def test_session_board_detected_but_device_not_calibrated(tmp_path):
 
     assert diag.detected  # board was fine...
     assert calibration is not None and not calibration.ok  # ...but no intrinsics
-    assert "device not calibrated" in calibration.warnings
+    assert any("device not calibrated" in w for w in calibration.warnings)
 
 
 def test_session_board_absent(tmp_path):

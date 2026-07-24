@@ -11,11 +11,16 @@ movement video and returns a JSON assessment compatible with the existing MediaP
 ```powershell
 uv sync
 Copy-Item .env.example .env
-uv run uvicorn app.main:app --port 8000
+uv run python -m app          # port via $env:PORT (default 8000)
 ```
 
 Then open the demo page at [http://127.0.0.1:8000/](http://127.0.0.1:8000/), or check health with
 `Invoke-RestMethod http://127.0.0.1:8000/health`.
+
+> Use `uv run python -m app` rather than `uv run uvicorn app.main:app` — the runner bounds
+> uvicorn's graceful-shutdown wait so **Ctrl+C actually stops the server** on Windows (plain
+> uvicorn hangs at "Shutting down" waiting on an open browser tab's connections). If you do run
+> uvicorn directly, add `--timeout-graceful-shutdown 5`.
 
 Full setup, run, GPU, and integration instructions are in
 [docs/01-getting-started.md](docs/01-getting-started.md).
@@ -30,6 +35,7 @@ Full setup, run, GPU, and integration instructions are in
 | 04 | [API Contract](docs/04-api-contract.md) | Request/response shape of the endpoints |
 | 05 | [Evaluation Plan](docs/05-evaluation-plan.md) | Tests, acceptance criteria, validation risks |
 | 06 | [Implementation Plan](docs/06-implementation-plan.md) | Build phases |
+| 07 | [Demo User Guide](docs/07-demo-user-guide.md) | Step-by-step: which video to upload, reading results |
 
 The requirement/proposal doc is [docs/Project101_Team5.md](docs/Project101_Team5.md) (the master
 clinical spec this service's response mirrors). Contributors working with AI agents: see

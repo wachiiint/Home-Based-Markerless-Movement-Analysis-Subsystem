@@ -62,9 +62,23 @@ class SessionCalibrator:
         device_id, source = derive_device_id(device_meta)
         intrinsics = self.device_store.get(device_id, image_size=image_size)
         if intrinsics is None:
-            return CameraCalibration(ok=False, method="charuco", warnings=["device not calibrated"]), diagnostics
+            w, h = image_size
+            return CameraCalibration(
+                ok=False,
+                method="charuco",
+                warnings=[
+                    f"device not calibrated (device_id={device_id}, source={source}, {w}x{h}); "
+                    "calibrate this device at the SAME resolution/orientation as the patient clip"
+                ],
+            ), diagnostics
         if intrinsics.status != "valid":
-            return CameraCalibration(ok=False, method="charuco", warnings=[f"intrinsics {intrinsics.status}"]), diagnostics
+            detail = ""
+            if intrinsics.status == "stale":
+                detail = (
+                    f"; calibrated at {intrinsics.image_size[0]}x{intrinsics.image_size[1]} but clip is "
+                    f"{image_size[0]}x{image_size[1]} -- recalibrate at the clip resolution"
+                )
+            return CameraCalibration(ok=False, method="charuco", warnings=[f"intrinsics {intrinsics.status}{detail}"]), diagnostics
 
         board = build_charuco_board(self.spec, intrinsics.print_scale_factor)
         R, t, plane, reproj = pose_from_charuco(self._best_corners, self._best_ids, board, intrinsics.K, intrinsics.dist_coeffs)

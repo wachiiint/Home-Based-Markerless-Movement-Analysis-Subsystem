@@ -59,6 +59,57 @@ function buildFrame(cycleFraction) {
   return arr;
 }
 
+// Muscle overlay, mirroring app/services/lifting/muscles.py so the preview shows
+// the same overlay the backend produces (kept in sync with that module).
+const LEG = { left: { hip: 4, knee: 5, ankle: 6 }, right: { hip: 1, knee: 2, ankle: 3 } };
+const PELVIS = 0, THORAX = 8;
+// Mirrors _BUILTIN_MUSCLES in app/services/lifting/muscles.py (keep in sync).
+const MUSCLES = [
+  { name: 'Quadriceps', joint: 'knee', lengthensOnFlexion: true, anchors: [['hip', 'knee', 0.05], ['hip', 'knee', 0.55], ['knee', 'ankle', 0.12]], bulge: +0.06 },
+  { name: 'Hamstrings', joint: 'knee', lengthensOnFlexion: false, anchors: [['pelvis', 'hip', 0.5], ['hip', 'knee', 0.5], ['knee', 'ankle', 0.12]], bulge: -0.06 },
+  { name: 'Gastrocnemius', joint: 'knee', lengthensOnFlexion: false, anchors: [['hip', 'knee', 0.82], ['knee', 'ankle', 0.5], ['knee', 'ankle', 0.95]], bulge: -0.05 },
+  { name: 'Iliopsoas', joint: 'hip', lengthensOnFlexion: false, anchors: [['thorax', 'pelvis', 0.55], ['pelvis', 'hip', 0.6], ['hip', 'knee', 0.12]], bulge: +0.05 },
+  { name: 'Gluteals', joint: 'hip', lengthensOnFlexion: true, anchors: [['pelvis', 'hip', 0.2], ['hip', 'knee', 0.12]], bulge: -0.06 },
+];
+
+const jointIndex = (side, name) => (name === 'pelvis' ? PELVIS : name === 'thorax' ? THORAX : LEG[side][name]);
+
+function angle3d(a, vertex, b) {
+  const v1 = [a[0] - vertex[0], a[1] - vertex[1], a[2] - vertex[2]];
+  const v2 = [b[0] - vertex[0], b[1] - vertex[1], b[2] - vertex[2]];
+  const dot = v1[0] * v2[0] + v1[1] * v2[1] + v1[2] * v2[2];
+  const n1 = Math.hypot(...v1), n2 = Math.hypot(...v2);
+  if (n1 < 1e-9 || n2 < 1e-9) return 0; // matches vector_angle_degrees
+  return (Math.acos(Math.max(-1, Math.min(1, dot / (n1 * n2)))) * 180) / Math.PI;
+}
+
+function jointAngle(frame, side, joint) {
+  const leg = LEG[side];
+  if (joint === 'knee') return angle3d(frame[leg.hip], frame[leg.knee], frame[leg.ankle]);
+  return angle3d(frame[THORAX], frame[leg.hip], frame[leg.knee]);
+}
+
+function normalize(values) {
+  const lo = Math.min(...values), hi = Math.max(...values);
+  if (hi - lo < 1e-6) return values.map(() => 0.5);
+  return values.map((v) => Number(((v - lo) / (hi - lo)).toFixed(4)));
+}
+
+function computeMuscles(frames) {
+  const overlay = [];
+  for (const side of ['left', 'right']) {
+    for (const m of MUSCLES) {
+      const raw = frames.map((f) => {
+        const a = jointAngle(f, side, m.joint);
+        return m.lengthensOnFlexion ? 180 - a : a;
+      });
+      const anchors = m.anchors.map(([a, b, t]) => [jointIndex(side, a), jointIndex(side, b), t]);
+      overlay.push({ name: m.name, side, anchors, bulge: m.bulge, length: normalize(raw) });
+    }
+  }
+  return overlay;
+}
+
 // Returns a payload shaped exactly like the backend's build_pose3d_payload output.
 export function buildSamplePose3dPayload({ frames = 60, cycles = 2, fps = 20 } = {}) {
   const seq = Array.from({ length: frames }, (_, i) => buildFrame((cycles * i) / frames));
@@ -73,5 +124,6 @@ export function buildSamplePose3dPayload({ frames = 60, cycles = 2, fps = 20 } =
     analysis_mode: '3d',
     lift_reliable: true,
     lift_warnings: [],
+    muscles: computeMuscles(seq),
   };
 }

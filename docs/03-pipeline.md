@@ -202,6 +202,35 @@ The 3D output is unitless, so we need to find **mm per 1 unit**:
   (placed in `transformation_matrix_6dof`)
 - The ankle task still uses the 2D angle even when calibration succeeds (`supports_3d_angle` = false)
 
+### 4.5 Muscle Overlay (display only)
+
+The 3D viewer can overlay the major lower-limb muscles (`app/services/lifting/muscles.py` →
+`pose_3d` payload → `viewer3d.js`). It shows muscle **length/geometry**, never force.
+
+- **Why not force:** a single camera has no ground-reaction force, so muscle force/activation is not
+  computable — full stop. Length and *strain* (ΔL/L₀), though, are purely kinematic, so those we can
+  show.
+- **Shape vs colour:** each muscle is routed through *anchors* (a fraction along a bone), so it bends
+  with the limb; colour is a per-frame length proxy (contracted → stretched) from the joint angle.
+- **Anatomy source:** anchor placement comes from a built-in approximation, or from the OpenSim
+  **gait2392** model when `models/target/gait2392_muscles.json` is present. Produce that file (offline, no
+  OpenSim runtime) by downloading a gait2392 `.osim` yourself and running:
+  ```powershell
+  uv run python -m app.tools.extract_gait2392_muscles --osim models/target/gait2392_simbody.osim
+  ```
+
+**Limitations (read before trusting it):**
+- gait2392 gives anatomically-real *paths*, but its muscles depend on full 3D, multi-DOF kinematics.
+  A single-camera 17-joint lift reliably observes only **sagittal hip/knee flexion** — so the quad and
+  hamstring length reads are reasonable; anything driven by rotation, ab/adduction, or the foot is
+  under-observed and only indicative.
+- This is therefore a **kinematic length estimate, not a validated gait2392 simulation.** The overlay
+  is labeled as such in the UI; do not present it as measured muscle mechanics.
+
+**Opinion:** the honest, useful version of this feature is exactly this — sagittal-plane length/strain
+of the flexion/extension muscles, gait2392 for geometry, clearly labeled. Going further (true muscle
+force/load) needs a force plate and is out of scope for a single camera, no model can fix that.
+
 ---
 
 ## 5. Response Structure (Output)

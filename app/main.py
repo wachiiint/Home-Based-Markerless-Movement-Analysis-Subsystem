@@ -13,9 +13,14 @@ from fastapi.staticfiles import StaticFiles
 from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.core.security import require_service_key
+from app.models.calibration import CharucoBoardSpec
 from app.schemas.movement import TaskType
 from app.schemas.response import DemoAssessmentResponse, HealthResponse, MovementAssessmentResponse
+from app.services.calibration.charuco_calibrator import calibrate_device_from_images
+from app.services.calibration.device_id import derive_device_id
 from app.services.calibration.device_store import DeviceStore
+from app.services.calibration.print_verify import compute_print_scale
+from app.tools.calibrate_device import sample_video_frames
 from app.services.lifting.lifter import build_lifter
 from app.services.pose.pose_estimator import RtmlibAdapter
 from app.services.response_mapper import build_fake_response
@@ -90,7 +95,7 @@ def _cleanup_demo_results() -> None:
         shutil.rmtree(app.state.demo_results.pop(session_id)["directory"], ignore_errors=True)
 
 
-async def _run_real_analysis(file: UploadFile, task_type: TaskType, view: str, subject_height_mm: float | None = None, want_pose_3d: bool = False) -> tuple[VideoAnalysis, Path]:
+async def _run_real_analysis(file: UploadFile, task_type: TaskType, view: str, subject_height_mm: float | None = None, want_pose_3d: bool = False, device_make: str = "", device_model: str = "") -> tuple[VideoAnalysis, Path]:
     settings = app.state.settings
     if app.state.pose_estimator is None:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="pose model is not loaded")
@@ -101,7 +106,7 @@ async def _run_real_analysis(file: UploadFile, task_type: TaskType, view: str, s
         analysis = analyze_video(
             input_path, output_path, task_type, view, settings, app.state.pose_estimator,
             lifter=app.state.lifter, device_store=app.state.device_store, subject_height_mm=subject_height_mm,
-            want_pose_3d=want_pose_3d,
+            want_pose_3d=want_pose_3d, device_make=device_make, device_model=device_model,
         )
         return analysis, output_path
     except ValueError as exc:
@@ -145,6 +150,8 @@ async def assess_movement(
     view: str = Form(...),
     file: UploadFile = File(...),
     subject_height_mm: float | None = Form(default=None),
+    device_make: str = Form(default=""),
+    device_model: str = Form(default=""),
 ) -> MovementAssessmentResponse:
     settings = app.state.settings
     normalized_view = view if view in {"frontal", "lateral"} else "frontal"
@@ -159,7 +166,10 @@ async def assess_movement(
     if settings.fake_mode:
         return build_fake_response(task_type, normalized_view, settings.frame_sample_fps)
     try:
-        analysis, output_path = await _run_real_analysis(file, task_type, normalized_view, subject_height_mm)
+        analysis, output_path = await _run_real_analysis(
+            file, task_type, normalized_view, subject_height_mm,
+            device_make=device_make, device_model=device_model,
+        )
         shutil.rmtree(output_path.parent, ignore_errors=True)
         return analysis.response
     except HTTPException:
@@ -177,6 +187,8 @@ async def demo_assess(
     task_type: TaskType = Form(...),
     view: str = Form(...),
     file: UploadFile = File(...),
+    device_make: str = Form(default=""),
+    device_model: str = Form(default=""),
 ) -> DemoAssessmentResponse:
     settings = app.state.settings
     if settings.fake_mode:
@@ -184,7 +196,10 @@ async def demo_assess(
     _cleanup_demo_results()
     normalized_view = view if view in {"frontal", "lateral"} else "frontal"
     try:
-        analysis, output_path = await _run_real_analysis(file, task_type, normalized_view, want_pose_3d=True)
+        analysis, output_path = await _run_real_analysis(
+            file, task_type, normalized_view, want_pose_3d=True,
+            device_make=device_make, device_model=device_model,
+        )
     except HTTPException:
         raise
     result = analysis.response
@@ -204,6 +219,116 @@ async def demo_assess(
         pose_3d_url=pose_3d_url,
         expires_at=expires_at.isoformat(),
     )
+
+
+@app.post("/api/demo/calibrate", include_in_schema=False)
+async def demo_calibrate(
+    file: UploadFile = File(...),
+    make: str = Form(default=""),
+    model: str = Form(default=""),
+    measured_bar_mm: float = Form(default=100.0),
+    square_length_mm: float = Form(default=25.0),
+    marker_length_mm: float = Form(default=18.0),
+) -> JSONResponse:
+    """Calibrate a device's intrinsics from a board video uploaded in the browser.
+
+    Mirrors the ``app.tools.calibrate_device`` CLI: sample frames, run ChArUco
+    calibration with the given board size + print-scale correction, and persist
+    the ``DeviceIntrinsics`` keyed by device_id so the metric-3D path can engage.
+    """
+    settings = app.state.settings
+    if settings.fake_mode:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="set FAKE_MODE=false for the demo UI")
+    if app.state.device_store is None:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="calibration store unavailable (model not loaded)")
+    if marker_length_mm <= 0 or square_length_mm <= 0 or marker_length_mm >= square_length_mm:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="marker_length_mm must be > 0 and smaller than square_length_mm",
+        )
+
+    input_path = None
+    try:
+        input_path = await save_upload(file, settings.demo_max_upload_mb * 1024 * 1024)
+        frames, image_size = sample_video_frames(input_path, sample_fps=2.0, max_frames=40)
+        if not frames:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="could not decode any frames -- the codec may be unsupported (e.g. HEVC/H.265 from iPhone); re-encode to H.264 MP4 and retry",
+            )
+
+        print_scale_factor, scale_warnings = compute_print_scale(measured_bar_mm)
+        width, height = image_size
+        orientation = "portrait" if height >= width else "landscape"
+        meta = {"make": make, "model": model, "width": width, "height": height, "orientation": orientation}
+        device_id, source = derive_device_id(meta)
+
+        spec = CharucoBoardSpec(square_length_mm=square_length_mm, marker_length_mm=marker_length_mm)
+        intrinsics = calibrate_device_from_images(
+            frames, device_id=device_id, image_size=image_size, spec=spec,
+            print_scale_factor=print_scale_factor, raw_meta=meta, source=source,
+        )
+
+        warnings = list(scale_warnings)
+        if source == "resolution_only":
+            warnings.append("no make/model given -> device_id keyed on resolution only; two phones at this resolution will collide")
+
+        if intrinsics.status != "valid":
+            return JSONResponse(
+                status_code=status.HTTP_200_OK,
+                content={
+                    "ok": False, "device_id": device_id, "source": source,
+                    "image_size": [width, height], "frames_sampled": len(frames),
+                    "status": intrinsics.status, "warnings": warnings,
+                    "message": "calibration failed: need >=3 frames with the board clearly visible",
+                },
+            )
+
+        app.state.device_store.put(intrinsics)
+        return JSONResponse(
+            status_code=status.HTTP_200_OK,
+            content={
+                "ok": True, "device_id": device_id, "source": source,
+                "image_size": [width, height], "frames_sampled": len(frames),
+                "reproj_error_px": round(intrinsics.reproj_error_px, 3),
+                "print_scale_factor": round(print_scale_factor, 4),
+                "status": intrinsics.status, "warnings": warnings,
+                "message": "device calibrated; use the same make/model/resolution when analyzing a patient clip",
+            },
+        )
+    except HTTPException:
+        raise
+    except ValueError as exc:
+        # save_upload / frame sampling raise ValueError for actionable input
+        # problems ("video is too large", unreadable) -> surface, don't mask as 500.
+        raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_ENTITY, detail=str(exc)) from None
+    except Exception:
+        logger.exception("calibration failed")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="calibration failed") from None
+    finally:
+        if input_path is not None:
+            shutil.rmtree(input_path.parent, ignore_errors=True)
+
+
+@app.get("/api/demo/devices", include_in_schema=False)
+async def demo_devices() -> JSONResponse:
+    """List calibrated devices so the analysis form can offer them as a choice."""
+    store = app.state.device_store
+    if store is None:
+        return JSONResponse(content={"devices": []})
+    devices = [
+        {
+            "device_id": d.device_id,
+            "make": d.raw_meta.get("make", ""),
+            "model": d.raw_meta.get("model", ""),
+            "image_size": list(d.image_size),
+            "source": d.source,
+            "status": d.status,
+            "reproj_error_px": round(d.reproj_error_px, 3),
+        }
+        for d in store.all()
+    ]
+    return JSONResponse(content={"devices": devices})
 
 
 @app.get("/api/demo/results/{session_id}/annotated.mp4", include_in_schema=False)

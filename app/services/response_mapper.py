@@ -29,6 +29,7 @@ def build_assessment_response(
     confidence_score: float,
     flags: list[str],
     analyzed_side: str | None = None,
+    joint_angles_override: dict[str, float] | None = None,
     analysis_mode: str = "2d",
     joint_angles_3d: dict[str, float] | None = None,
     scale_mm_per_unit: float | None = None,
@@ -36,10 +37,14 @@ def build_assessment_response(
     transformation_6dof: TransformationMatrix6DoF | None = None,
     board_diagnostics: BoardDetectionDiagnostics | None = None,
     guard_warnings: list[str] | None = None,
+    smoothness: dict | None = None,
+    symmetry_index_score: float | None = None,
 ) -> MovementAssessmentResponse:
     config = TASK_CONFIGS[task_type]
     rom = round(angle_max - angle_min, 2)
-    joint_angles = {
+    # analyze_video reports both legs via the override (side-prefixed keys); the
+    # single-side form below still serves build_fake_response and the contract test.
+    joint_angles = joint_angles_override if joint_angles_override is not None else {
         config.max_key: round(angle_max, 2),
         config.min_key: round(angle_min, 2),
         config.rom_key: rom,
@@ -61,10 +66,11 @@ def build_assessment_response(
             joint_angles_3d=joint_angles_3d or {},
             scale_mm_per_unit=scale_mm_per_unit,
             scale_source=scale_source,
-            gait_parameters={}, #TODO: must fill to complete project ?!?
-            compensation={}, #TODO: must fill to complete project ?!?
-            smoothness={}, #TODO: must fill to complete project ?!?
-            symmetry_index_score=None,
+            gait_parameters={},  # TODO(Q3): needs a walking task + foot-contact detection
+            compensation={},  # TODO(Q4): multi-joint compensation detection
+            smoothness=smoothness or {},
+            # None unless both legs performed the movement (unilateral task -> abstain)
+            symmetry_index_score=symmetry_index_score,
             pose_quality=PoseQuality(
                 mean_keypoint_confidence=mean_keypoint_confidence,
                 valid_frame_ratio=valid_frame_ratio,

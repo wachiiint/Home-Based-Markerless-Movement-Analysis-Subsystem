@@ -9,6 +9,7 @@ stays lean and the coords are served as a separate demo-only file.
 
 import numpy as np
 
+from app.services.lifting.muscles import compute_muscle_overlay
 from app.services.lifting.pipeline import Lifted3DSequence
 from app.services.lifting.skeleton_convert import H36M_EDGES, H36M_JOINT_NAMES
 
@@ -42,4 +43,6 @@ def build_pose3d_payload(
         "analysis_mode": analysis_mode,
         "lift_reliable": bool(lift_reliable),
         "lift_warnings": list(lift_warnings),
+        # Display-only kinematic muscle-length proxy (M-A); geometry, not force.
+        "muscles": compute_muscle_overlay(keypoints),
     }

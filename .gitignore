@@ -3,15 +3,14 @@ __pycache__/
 *.py[cod]
 .pytest_cache/
 .env
-clip.mp4
-clip2.mp4
 
 ## local dump: paper, clip, temp
 /dump
 .claude
 data/
-# model weights (large binaries — keep out of git)
-models/
-*.onnx
-*.onnx.data
+
+# model weights
+models/target
+models/*.onnx
+models/*.onnx.data
 *.bin
