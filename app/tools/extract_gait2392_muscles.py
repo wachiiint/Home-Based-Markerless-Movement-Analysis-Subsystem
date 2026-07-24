@@ -1,7 +1,7 @@
 """Extract gait2392 muscle path geometry into ``models/gait2392_muscles.json``.
 
 Reads an OpenSim **gait2392** ``.osim`` (XML) -- which you download yourself,
-see ``docs/03-pipeline.md`` -- and writes the anchor table the 3D viewer's muscle
+see ``docs2/02-pipeline.md`` -- and writes the anchor table the 3D viewer's muscle
 overlay consumes. It reads **geometry only**: it does NOT run OpenSim and
 computes no forces (a single camera can't measure force anyway).
 

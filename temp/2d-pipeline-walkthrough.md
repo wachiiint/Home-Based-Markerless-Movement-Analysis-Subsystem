@@ -85,7 +85,7 @@ screen] → 3D no-op → response`.
    face/arms, so it under-reports how confident the *leg* joints (the ones actually measured) were.
 4. **Screening is rule-based** (`analysis/screening.py`), and the per-task thresholds in `task_config.py` are
    set by convention, not empirically validated. Raw 2D angles also have known joint-specific bias
-   with no correction step. See `docs/05-evaluation-plan.md` "Literature-Informed Validation Risks".
+   with no correction step. See `docs2/07-evaluation-and-limitations.md` "Literature-Informed Validation Risks".
 5. **`occlusion_warning` implementation is a crude proxy** (`response_mapper.py:71`): it is purely
    `valid_frame_ratio < 0.8`, unrelated to actual occlusion detection, and its hardcoded `0.8`
    is *inconsistent* with the configurable `min_valid_frame_ratio` (default 0.6) used for the
@@ -95,7 +95,7 @@ screen] → 3D no-op → response`.
    improved behind the contract. (A duplicate `services/analysis/quality.py::compute_pose_quality`
    was found unused and has since been deleted; the live path computes this inline in the mapper.)
 6. **`confidence_score` is a fixed 50/50 blend** (`analysis/screening.py:23`) of frame ratio and mean
-   confidence — arbitrary weights. (Scheduled to change in P0 of `docs/08-scope-v2.md` to
+   confidence — arbitrary weights. (Scheduled to change in P0 of `docs2/04-planning.md` to
    0.40/0.40/0.20 with a new `tracking_stability_score` term.)
 7. **ROM = raw `max - min`** (`analysis/kinematics.py:12`) over the series — a single outlier frame
    (one spurious max or min) directly inflates ROM; no robust/percentile bounds.
@@ -114,7 +114,7 @@ validate on held-out cohort) rather than a black-box classifier. For a *decision
 (not diagnosis), rule-based is a feature: transparent and explainable to a clinician. If anything is
 added later it would most likely (a) correct raw-angle bias before screening and (b) replace
 convention thresholds with validated ones — not a full ML risk classifier. Source of truth is
-`docs/Project101_Team5.md`.
+`docs2/Project101_Team5.md`.
 
 **Q2 — Is `occlusion_warning = valid_frame_ratio < 0.8` okay?**
 **Decision: do NOT rename the field.** It is part of the master contract (`Project101_Team5.md:134`)

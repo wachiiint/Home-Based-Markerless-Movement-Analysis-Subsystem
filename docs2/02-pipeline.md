@@ -75,6 +75,11 @@ Both default to the most recent recordings. A clinician can instead choose two s
 
 What the software does with one submitted video.
 
+> **Diagram:** [`data-pipeline_13Jul.png`](data-pipeline_13Jul.png) is a drawn version of this
+> pipeline. ⚠️ It predates the current design — it shows the ChArUco board as the entry point to the
+> 3D path, a single chosen leg rather than both, and the old endpoint name. Keep it as artwork to
+> redraw from, not as current truth. The text below is authoritative.
+
 ```
 video in
    │

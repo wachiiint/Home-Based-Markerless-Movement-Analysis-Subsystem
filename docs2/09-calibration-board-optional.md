@@ -1,14 +1,18 @@
-# Calibration & Capture Protocol
+# 09 — Calibration Board Protocol (optional, legacy)
+
+> ⚠️ **Optional and being superseded.** This describes the ChArUco board path, which is how metric
+> scale works *today*. Per [01-specification.md](01-specification.md) section 6.4, hospital-measured
+> **bone lengths** replace the board as the scale source in P2 of
+> [04-planning.md](04-planning.md), after which the board is needed only for the floor plane and the
+> camera-to-floor transform. Most users will never need this document.
+>
+> Joint angles, ROM, smoothness, and screening are **scale-invariant** and never require the board.
+> Follow this only when you specifically need distances in millimetres before P2 lands.
 
 How to take a device from "uncalibrated" to producing metric 3D output, and how
 to record a patient clip so the metric-3D path actually engages. This is the
 operator-facing companion to the code in `app/services/calibration/` and the
 CLIs in `app/tools/`.
-
-> **This whole protocol is optional.** Joint angles, ROM, smoothness, symmetry, and screening never
-> need the board — they are scale-invariant. Follow this only when you want millimetre distances.
-> Per [08-scope-v2.md](08-scope-v2.md), hospital-measured bone lengths will replace the board as the
-> metric-scale source, leaving it responsible for the floor plane and 6DoF transform only.
 
 > Metric 3D (`joint_angles_3d`, `scale_mm_per_unit`, `transformation_matrix_6dof`)
 > only appears when **(a)** the recording device has a `valid` intrinsics record
@@ -99,5 +103,5 @@ The steps above prove the pipeline *engages* on a real board. Proving it is
 *accurate* additionally needs a reference: measure hip/knee ROM with a
 goniometer during the same clip and compare against `joint_angles_3d`, and check
 `scale_mm_per_unit` against a known length. Target the ~6° clinical-acceptability
-band from `docs/05-evaluation-plan.md`. Record the first real board clip + its
+band from `docs2/07-evaluation-and-limitations.md`. Record the first real board clip + its
 reference as the first non-synthetic fixture when hardware is available.

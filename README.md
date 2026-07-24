@@ -1,8 +1,9 @@
 # RTMPose Movement Analysis Service
 
-A local FastAPI service for markerless movement analysis with RTMPose — 2D analysis always, plus
-optional single-camera 3D. It accepts an uploaded movement video and returns a JSON assessment
-compatible with the existing MediaPipe backend contract.
+A local FastAPI service for markerless movement analysis with RTMPose, supporting home-based
+sarcopenia screening. It accepts a short video of a patient performing one prescribed leg movement
+and returns joint angles, range of motion, smoothness, and a quality-graded screening indicator,
+plus an annotated skeleton video and a 3D motion simulation.
 
 > **This is a local decision-support / demo service. It is not a clinical diagnosis system,
 > and should not be exposed directly to the public internet.**
@@ -23,25 +24,27 @@ Then open the demo page at [http://127.0.0.1:8000/](http://127.0.0.1:8000/), or 
 > uvicorn hangs at "Shutting down" waiting on an open browser tab's connections). If you do run
 > uvicorn directly, add `--timeout-graceful-shutdown 5`.
 
-Full setup, run, GPU, and integration instructions are in
-[docs/01-getting-started.md](docs/01-getting-started.md).
+Full installation, GPU, and 3D setup instructions are in [docs2/06-setup.md](docs2/06-setup.md).
 
-## Documentation (read in order)
+## Documentation
+
+Everything lives in **[`docs2/`](docs2/)**. Start with the specification, or jump to the planning
+document to see what is being built next.
 
 | # | Doc | What it covers |
 |---|-----|----------------|
-| 01 | [Getting Started](docs/01-getting-started.md) | Install, configure, run the service and demo UI |
-| 02 | [Project Overview](docs/02-project-overview.md) | What it is, where it fits, key terms |
-| 03 | [Pipeline](docs/03-pipeline.md) | How a video becomes a risk assessment (the deep dive) |
-| 04 | [API Contract](docs/04-api-contract.md) | Request/response shape of the endpoints |
-| 05 | [Evaluation Plan](docs/05-evaluation-plan.md) | Tests, acceptance criteria, validation risks |
-| 06 | [Implementation Plan](docs/06-implementation-plan.md) | Build phases (historical record) |
-| 07 | [Demo User Guide](docs/07-demo-user-guide.md) | Step-by-step: which video to upload, reading results |
-| 08 | [Scope v2](docs/08-scope-v2.md) | **Current roadmap and source of truth for what comes next** |
+| 00 | [Glossary](docs2/00-glossary.md) | Every clinical and technical term used |
+| 01 | [Specification](docs2/01-specification.md) | **Start here** — what the project is, why, and its architecture |
+| 02 | [Pipeline](docs2/02-pipeline.md) | The patient workflow and the technical data pipeline |
+| 03 | [API Contract](docs2/03-api-contract.md) | Request and response formats |
+| 04 | [Planning](docs2/04-planning.md) | **What comes next** — phases, tasks, risk, effort |
+| 05 | [User Manual](docs2/05-user-manual.md) | How to perform, record, and read each movement test |
+| 06 | [Setup](docs2/06-setup.md) | Install and run the application |
+| 07 | [Evaluation & Limitations](docs2/07-evaluation-and-limitations.md) | Accuracy, validation, and what we can honestly claim |
+| 08 | [Spec Alignment](docs2/08-spec-alignment.md) | Status against the advisor's specification |
+| 09 | [Calibration Board](docs2/09-calibration-board-optional.md) | Optional, being superseded by bone-length scale |
 
-Also: [Calibration Capture](docs/CALIBRATION_CAPTURE.md) — the operator protocol for the optional
-ChArUco board path.
+Source material: [Project101_Team5.md](docs2/Project101_Team5.md) is the original project proposal and
+clinical requirement.
 
-The requirement/proposal doc is [docs/Project101_Team5.md](docs/Project101_Team5.md) (the master
-clinical spec this service's response mirrors). Contributors working with AI agents: see
-[AGENTS.md](AGENTS.md).
+Contributors working with AI agents: see [AGENTS2.md](AGENTS2.md).

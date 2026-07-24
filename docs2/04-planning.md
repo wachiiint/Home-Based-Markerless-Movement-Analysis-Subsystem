@@ -57,6 +57,16 @@ genuine safety gap.
 - [ ] **Rename inferred quantities to `estimated_`** — 1 d · low · honesty, enforced in the field names
 - [ ] **Flag when the declared side is not the leg that moved** — 0.5 d · low · catches mislabelled recordings for free
 - [ ] **Update tests and the demo page to the new shape** — 1.5 d · low · keeps the suite green
+- [ ] **Trim the test suite while updating it** — 0.5 d · low · 105 tests is heavy for a project this size
+
+**On trimming tests.** The response restructure invalidates a chunk of the suite anyway, so P0 is the
+right moment to cut rather than doing it as separate work. Two cautions when choosing what goes.
+Keep the **known-answer kinematics tests** — they check that a known geometric input produces the
+expected angle, which is the only real evidence the measurement maths is right. And remember that the
+suite already proves less than it appears to: it demonstrates code correctness, not measurement
+accuracy (see [07-evaluation-and-limitations.md](07-evaluation-and-limitations.md) part 3). Cutting
+tests reduces the first without improving the second, so trim duplicates and scaffolding, not the
+maths.
 
 **Note on `tracking_stability_score`.** It does not exist yet and must be defined. The intended
 meaning is how steadily the skeleton was tracked between frames — large frame-to-frame jumps in joint
