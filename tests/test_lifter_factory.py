@@ -88,7 +88,7 @@ def test_lift_short_sequence_is_single_pass():
     np.testing.assert_allclose(out[..., :2], normalized_2d, rtol=0, atol=1e-5)
 
 
-_MODEL_PATH = Path("models/motionbert_lite.onnx")
+_MODEL_PATH = Path("models/target/motionbert_lite_sim.onnx")
 
 
 @pytest.mark.skipif(not _MODEL_PATH.exists(), reason="MotionBERT ONNX weights not present")

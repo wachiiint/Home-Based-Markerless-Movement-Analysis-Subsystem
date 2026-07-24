@@ -40,10 +40,5 @@ RIGHT_LEG = {
 }
 
 
-def get_keypoint(keypoints, index: int) -> tuple[float, float]:
-    point = keypoints[index]
-    return float(point[0]), float(point[1])
-
-
 def leg_indices(side: str) -> dict[str, int]:
     return LEFT_LEG if side == "left" else RIGHT_LEG

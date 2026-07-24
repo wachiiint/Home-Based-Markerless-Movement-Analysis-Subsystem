@@ -25,8 +25,3 @@ class RtmlibAdapter:
 
     def infer(self, frame):
         return self.model(frame)
-
-
-class MmposeAdapter:
-    def infer(self, frame):
-        raise NotImplementedError("MMPose is optional and not implemented in v1.")
