@@ -209,11 +209,13 @@ scale-invariant, so they are trustworthy regardless of the metric-scale path.
 | Q3 | `gait_parameters` (cadence, step/stride) | ~4–6d | new walking task + foot-contact + F1 | High | Low | Only meaningful for gait clips | [ ] |
 | Q4 | `compensation` (trunk lean, hip hike) | ~3–5d | multi-joint analysis | High | Low | Fuzzy clinical definition | [ ] |
 | M-A | Visual muscle overlay on 3D skeleton (kinematic proxy, labeled) | ~3–5d | working 3D viewer | Med | High (demo) | Impressive demo now, no OpenSim needed | [x] |
-| M-B | Real OpenSim `gait2392` export (Phase E1–E6: `.mot` + muscle-param schema) | ~1.5–3wk | F2, task→coord sign/offset map | High | Medium | Scientifically-grounded backend | [ ] |
+| M-B | OpenSim `gait2392` **kinematics-only** export — IK + muscle length/moment-arm (`.mot` + muscle-param schema), **no force** | ~1.5–3wk | F2, marker/coord map, OpenSim dep | High | Medium | Scientifically-grounded muscle data | [ ] |
+| BH | Highlight the detected ChArUco board in the annotated video (+ optional floor marker in the 3D viewer) | ~1–2d | session calibrator | Low | Medium (UX) | Lets the user see the board is being read | [ ] |
 | CT | CT-driven muscle F0 (PCSA) | — | CT scan (unavailable) | — | Deferred | Patient-specific muscle force | [ ] |
 
 Notes: `pose_quality` is already computed (not a placeholder). Muscle *force* needs GRF/force plate →
-out of scope for single camera; both M-A and M-B show muscle *geometry/length*, not force.
+out of scope for single camera; both M-A and M-B show muscle *geometry/length*, not force. The board
+gives **scale/floor only** — it does not feed the 3D lift (see `docs/03-pipeline.md` §4.1, §4.6).
 
 ## Scope Note
 

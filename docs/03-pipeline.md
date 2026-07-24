@@ -170,6 +170,14 @@ File: [calibration/session.py](app/services/calibration/session.py)
   - Recovers the board's pose → yields the **floor plane** + a reprojection error
   - If the reprojection error is high (>3px) or the camera was never calibrated → warning / turn 3D off
 
+> **What the board does — and doesn't:**
+> - ✅ Gives **real-world scale** (mm) + the floor / 6DoF transform. For this, the board must be visible
+>   **in the patient clip** (it's how we find the floor).
+> - ❌ Does **not** help the 3D lift. MotionBERT never sees the board — it's used only *after* lifting,
+>   to add scale. (Joint *angles* are scale-free, so they don't need the board either.)
+> - Camera **focal length** comes from a *separate* calibration clip, not the patient clip.
+> - In short: **patient-clip board = where the floor is (scale); calibration clip = focal length.**
+
 ### 4.2 Lifting 2D → 3D
 
 Files: [lifting/pipeline.py](app/services/lifting/pipeline.py) + [lifting/lifter.py](app/services/lifting/lifter.py)
@@ -230,6 +238,24 @@ The 3D viewer can overlay the major lower-limb muscles (`app/services/lifting/mu
 **Opinion:** the honest, useful version of this feature is exactly this — sagittal-plane length/strain
 of the flexion/extension muscles, gait2392 for geometry, clearly labeled. Going further (true muscle
 force/load) needs a force plate and is out of scope for a single camera, no model can fix that.
+
+### 4.6 When 3D falls back to 2D
+
+The result is **always valid 2D**; metric 3D only turns on when everything lines up. It stays 2D if
+**any** of these is true:
+
+- 3D disabled, or the MotionBERT weights fail the startup guard
+- **No ChArUco board detected** in the patient clip
+- **Camera not calibrated / resolution mismatch** — the device id includes the video resolution, so a
+  clip at a different resolution reads as "not calibrated"
+- Calibration clip was a different resolution/orientation (intrinsics "stale")
+- Task is **ankle** (no toe joint in the 17-joint skeleton)
+- No usable leg found
+- **Lift flagged unreliable** — bone lengths jitter too much (a noisy monocular lift)
+- Any error in the 3D step (caught → 2D)
+
+> A missing/uncertain **scale** is only a *warning*, not a rollback — the 3D angles still compute. And
+> the display 3D skeleton (+ muscle overlay) can still render even while the clinical mode is 2D.
 
 ---
 
