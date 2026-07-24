@@ -149,6 +149,10 @@ risk = high      if any flag is set, or ROM < borderline
 confidence_score = 0.5*valid_frame_ratio + 0.5*mean_confidence  (0..1)
 ```
 
+> Planned change (P0 in [08-scope-v2.md](08-scope-v2.md)): the blend becomes
+> `0.40*valid_frame_ratio + 0.40*mean_confidence + 0.20*tracking_stability_score`, and a hard-reject
+> guard rejects the assessment outright below the quality floor. The formula above is what runs today.
+
 The per-task `expected_rom_deg` / `borderline_rom_deg` values live in [task_config.py](app/models/task_config.py)
 
 ---
@@ -158,7 +162,12 @@ The per-task `expected_rom_deg` / `borderline_rom_deg` values live in [task_conf
 Everything lives in `_augment_with_3d()` at [video_analysis.py:120](app/services/video_analysis.py:120).
 Design principle: **best-effort, never raises** — if anything breaks, it falls back to the 2D result.
 
-### 4.1 Calibration (per session)
+### 4.1 Calibration (per session) — optional
+
+> **Status:** the ChArUco board is an **optional** path. Angles, ROM, smoothness, symmetry, and
+> screening never need it. Per [08-scope-v2.md](08-scope-v2.md), hospital-measured **bone lengths**
+> become the primary metric-scale source (work item A), after which the board's remaining job is the
+> floor plane and the 6DoF transform. This section describes what runs today.
 
 File: [calibration/session.py](app/services/calibration/session.py)
 
@@ -171,8 +180,8 @@ File: [calibration/session.py](app/services/calibration/session.py)
   - If the reprojection error is high (>3px) or the camera was never calibrated → warning / turn 3D off
 
 > **What the board does — and doesn't:**
-> - ✅ Gives **real-world scale** (mm) + the floor / 6DoF transform. For this, the board must be visible
->   **in the patient clip** (it's how we find the floor).
+> - ✅ Gives the floor / 6DoF transform, and today also **real-world scale** (mm). For this, the board
+>   must be visible **in the patient clip** (it's how we find the floor).
 > - ❌ Does **not** help the 3D lift. MotionBERT never sees the board — it's used only *after* lifting,
 >   to add scale. (Joint *angles* are scale-free, so they don't need the board either.)
 > - Camera **focal length** comes from a *separate* calibration clip, not the patient clip.
@@ -201,6 +210,10 @@ The 3D output is unitless, so we need to find **mm per 1 unit**:
 - **Fallback (`subject_height`)**: scale so that the head-to-foot distance equals the height the patient
   entered (`subject_height_mm`)
 - If both are available and they differ by >15% → warning `scale_uncertain`
+
+> Planned (work item A in [08-scope-v2.md](08-scope-v2.md)): a hospital-measured **bone length**
+> (known femur mm ÷ lifted femur units, per side) becomes the primary source, ahead of both paths
+> above. It needs no board and no floor plane.
 
 ### 4.4 3D Angles + 6DoF Transform
 

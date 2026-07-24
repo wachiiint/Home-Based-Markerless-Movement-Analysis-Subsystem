@@ -2,14 +2,15 @@
 
 ## What this service is
 
-A local **FastAPI** service for **2D markerless movement analysis** using **RTMPose**. It takes an
+A local **FastAPI** service for **markerless movement analysis** using **RTMPose**. It takes an
 uploaded video of a patient performing a leg movement and returns a JSON assessment (joint angles,
-range of motion, pose quality, and a risk screening result).
+range of motion, smoothness, left/right symmetry, pose quality, and a risk screening result). 2D
+analysis always runs; single-camera **3D** lifting is optional and best-effort on top of it.
 
 It is designed as a drop-in replacement for an existing MediaPipe-based analysis service, so it
 returns the **same JSON contract** the main backend already expects.
 
-> **Version 1 is a local decision-support / demo service. It is not a clinical diagnosis system.**
+> **This is a local decision-support / demo service. It is not a clinical diagnosis system.**
 
 ---
 
@@ -19,15 +20,16 @@ The screening numbers are the foundation, but the intended *differentiators* —
 project valuable to a doctor — are visual and longitudinal:
 
 1. **3D movement viewer (Three.js).** Let a doctor *see* the patient's movement pattern in 3D, not
-   just read angle numbers. This is the one piece already prototyped (the demo viewer, display-only).
-2. **CT-derived muscle mass overlay.** Import CT-scan muscle data from a partner team and overlay it
-   on the motion, connecting *how the patient moves* to *the underlying muscle*.
-3. **Before/after comparison for the same patient.** Compare two sessions of one patient to visualise
-   rehabilitation progress over time.
+   just read angle numbers. Built: the demo viewer, display-only.
+2. **Muscle overlay.** Show which muscles lengthen and shorten during the movement, connecting *how
+   the patient moves* to *the underlying muscle*. Built as a kinematic length proxy (display only);
+   see [03-pipeline.md](03-pipeline.md) §4.5 for what it does and does not claim.
+3. **Before/after comparison for the same patient.** Compare two sessions to visualise rehabilitation
+   progress. **Planned** — stateless (the backend passes the baseline in the request; this service
+   stores nothing). See [08-scope-v2.md](08-scope-v2.md) work item F.
 
-Scope note: v1 ships the 2D screening pipeline plus the display-only 3D viewer. The CT muscle overlay
-and before/after comparison are **roadmap** (the "Phase E" direction in `../AGENTS.md`); their
-detailed plan belongs in [06-implementation-plan.md](06-implementation-plan.md) when work starts.
+Scope note: CT-derived muscle data is **permanently out of scope** for a single-camera setup — see
+[08-scope-v2.md](08-scope-v2.md), which is the current roadmap and supersedes older plans.
 
 ---
 
@@ -70,7 +72,8 @@ Patient (frontend) ──upload video──▶ Main backend
 | **ROM (Range of Motion)** | How far a joint moves — the difference between its maximum and minimum angle across the video. |
 | **Screening** | Turning the measured angles + pose quality into a `risk_level` (low / moderate / high) with a confidence score. |
 | **3D lifting** | Optionally estimating a 3D pose from the 2D pose (via the MotionBERT model). Off by default, best-effort. |
-| **ChArUco board** | A printed calibration pattern. When visible in the video, it lets the service recover real-world scale for 3D. |
+| **ChArUco board** | A printed calibration pattern. **Optional.** When visible, it gives the floor plane and the camera→floor 6DoF transform (and today, metric scale). It does not feed the 3D lift. |
+| **Metric scale** | Converting the lift's arbitrary units to millimetres. Today: back-projected feet on the floor, with entered height as fallback. Planned (see [08-scope-v2.md](08-scope-v2.md) work item A): hospital-measured bone lengths, which removes the board from the scale path. |
 
 ---
 

@@ -75,7 +75,7 @@ You should see the status, selected device, and whether the model is loaded.
 >   inference.
 > - `model_loaded` tracks only the **2D RTMPose model**, which `rtmlib` **downloads automatically**
 >   on the first real run — you never fetch it by hand.
-> - It does **not** track the optional MotionBERT 3D model (`models/motionbert_lite.onnx`). That one
+> - It does **not** track the optional MotionBERT 3D model (`models/target/motionbert_lite_sim.onnx`). That one
 >   is separate, only loads when `ENABLE_3D=true`, and is not reflected in the health check. So a
 >   missing MotionBERT file does not change `model_loaded`.
 
@@ -107,7 +107,7 @@ continuation, not a backslash:
 curl.exe -F patient_id=PT-001 `
   -F task_type=knee_flexion `
   -F view=lateral `
-  -F file=@clip2.mp4 `
+  -F file=@knee_flex_nocalib.mp4 `
   -H "X-Internal-Service-Key: dev-local-analysis-key" `
   http://127.0.0.1:8000/api/movement/assess
 ```
@@ -118,7 +118,7 @@ curl.exe -F patient_id=PT-001 `
 curl -F patient_id=PT-001 \
   -F task_type=knee_flexion \
   -F view=lateral \
-  -F file=@clip.mp4 \
+  -F file=@knee_flex_nocalib.mp4 \
   -H "X-Internal-Service-Key: dev-local-analysis-key" \
   http://127.0.0.1:8000/api/movement/assess
 ```
@@ -141,7 +141,7 @@ PLEASE REFER TO [How to download MotionBert (.onnx)](../models/build_bert_lite.m
 
 ```env
 ENABLE_3D=true
-MOTIONBERT_MODEL_PATH=models/motionbert_lite_sim.onnx
+MOTIONBERT_MODEL_PATH=models/target/motionbert_lite_sim.onnx
 ```
 
 Restart the service. On startup it smoke-tests the export with `validate_lifter_io()`: if the ONNX

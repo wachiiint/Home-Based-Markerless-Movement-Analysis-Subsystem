@@ -1,9 +1,10 @@
 # RTMPose Movement Analysis Service
 
-A local FastAPI service for 2D markerless movement analysis with RTMPose. It accepts an uploaded
-movement video and returns a JSON assessment compatible with the existing MediaPipe backend contract.
+A local FastAPI service for markerless movement analysis with RTMPose — 2D analysis always, plus
+optional single-camera 3D. It accepts an uploaded movement video and returns a JSON assessment
+compatible with the existing MediaPipe backend contract.
 
-> **Version 1 is a local decision-support / demo service. It is not a clinical diagnosis system,
+> **This is a local decision-support / demo service. It is not a clinical diagnosis system,
 > and should not be exposed directly to the public internet.**
 
 ## Quickstart
@@ -34,8 +35,12 @@ Full setup, run, GPU, and integration instructions are in
 | 03 | [Pipeline](docs/03-pipeline.md) | How a video becomes a risk assessment (the deep dive) |
 | 04 | [API Contract](docs/04-api-contract.md) | Request/response shape of the endpoints |
 | 05 | [Evaluation Plan](docs/05-evaluation-plan.md) | Tests, acceptance criteria, validation risks |
-| 06 | [Implementation Plan](docs/06-implementation-plan.md) | Build phases |
+| 06 | [Implementation Plan](docs/06-implementation-plan.md) | Build phases (historical record) |
 | 07 | [Demo User Guide](docs/07-demo-user-guide.md) | Step-by-step: which video to upload, reading results |
+| 08 | [Scope v2](docs/08-scope-v2.md) | **Current roadmap and source of truth for what comes next** |
+
+Also: [Calibration Capture](docs/CALIBRATION_CAPTURE.md) — the operator protocol for the optional
+ChArUco board path.
 
 The requirement/proposal doc is [docs/Project101_Team5.md](docs/Project101_Team5.md) (the master
 clinical spec this service's response mirrors). Contributors working with AI agents: see

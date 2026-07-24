@@ -15,13 +15,16 @@
 - Uses `cuda:0` when available and configured.
 - `/health` reports selected device and model state.
 - `FAKE_MODE` supports backend integration without ML dependencies.
-- No MotionBERT, no 3D lifting, no gait or symmetry analysis in v1.
+- 3D lifting (MotionBERT) and ChArUco calibration are optional and best-effort: any failure falls
+  back to the 2D result rather than erroring.
+- `gait_parameters` and `compensation` stay empty; smoothness and symmetry are populated.
 
 ## Literature-Informed Validation Risks
 
-Reviewed against `dump/paper/Lower-limb tele-assessment manuscripts/` (six papers on
-smartphone/webcam movement assessment, pose-estimation accuracy, real-time musculoskeletal
-simulation, and Hill-type muscle model instability). Findings relevant to this service's pipeline:
+Reviewed against six published papers on smartphone/webcam movement assessment, pose-estimation
+accuracy, real-time musculoskeletal simulation, and Hill-type muscle model instability — cited inline
+below (DRome/BioRob 2024, the PLOS ONE BlazePose ROM study, NeuFun-TS, Halo Movement, and a Hill-type
+muscle model review). Findings relevant to this service's pipeline:
 
 - **Raw 2D joint angles carry systematic, joint-specific bias.** DRome (BioRob 2024) found
   uncorrected MoveNet joint angles had RMSE 7.3-15.7° vs. Vicon; error only fell below the ~6°
@@ -45,8 +48,9 @@ simulation, and Hill-type muscle model instability). Findings relevant to this s
 - **Richer biomechanical modeling (muscle force, Hill-type models) is correctly out of v1 scope.**
   The Hill-type muscle model review documents unresolved numerical-instability problems (negative
   stiffness on the descending force-length limb, no validated eccentric-contraction model) that are
-  still open research, not solved engineering — reinforcing the "no gait or symmetry analysis in
-  v1" boundary above rather than arguing for adding muscle-force estimation.
+  still open research, not solved engineering. This is why the muscle overlay ships as a kinematic
+  *length* proxy only: muscle force also needs ground reaction force, which a single camera cannot
+  provide.
 - **The overall single-camera approach is validated elsewhere.** Halo Movement (Amazon) and the
   PLOS ONE BlazePose study both show home-usable, single-RGB-camera pose estimation can reach
   moderate-to-strong correlation with clinical reference tests, so the chosen architecture (camera

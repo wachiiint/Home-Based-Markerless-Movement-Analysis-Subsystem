@@ -1,5 +1,8 @@
 # Implementation Plan
 
+> **Historical record.** Phases 1–4 below are complete and describe how the service was first built.
+> The current roadmap is [08-scope-v2.md](08-scope-v2.md).
+
 ## Phase 1: Scaffold and Docs
 
 Create the repository structure, documentation, environment example, and dependency metadata.

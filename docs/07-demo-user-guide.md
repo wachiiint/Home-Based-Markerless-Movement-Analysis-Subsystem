@@ -71,6 +71,10 @@ Do this only if you need **real-world distances** (millimetres) and metric 3D jo
 - Joint *angles* are already trustworthy without it (angles don't depend on scale) — calibration is
   about **distances**, not angles.
 
+> Coming later: a planned **bone-length** input (a hospital-measured femur/tibia length typed into the
+> form) will give metric scale with no board and no printing at all — see
+> [08-scope-v2.md](08-scope-v2.md) work item A. The board route below is what works today.
+
 ### One-time setup
 
 1. **Print the board.** Generate and print the ChArUco A4 sheet — see

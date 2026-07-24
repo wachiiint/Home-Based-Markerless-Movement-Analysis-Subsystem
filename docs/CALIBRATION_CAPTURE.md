@@ -5,6 +5,11 @@ to record a patient clip so the metric-3D path actually engages. This is the
 operator-facing companion to the code in `app/services/calibration/` and the
 CLIs in `app/tools/`.
 
+> **This whole protocol is optional.** Joint angles, ROM, smoothness, symmetry, and screening never
+> need the board — they are scale-invariant. Follow this only when you want millimetre distances.
+> Per [08-scope-v2.md](08-scope-v2.md), hospital-measured bone lengths will replace the board as the
+> metric-scale source, leaving it responsible for the floor plane and 6DoF transform only.
+
 > Metric 3D (`joint_angles_3d`, `scale_mm_per_unit`, `transformation_matrix_6dof`)
 > only appears when **(a)** the recording device has a `valid` intrinsics record
 > **and (b)** a calibrated ChArUco board is visible in the clip **and (c)** the

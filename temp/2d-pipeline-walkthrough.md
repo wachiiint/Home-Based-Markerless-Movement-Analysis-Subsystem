@@ -4,7 +4,7 @@ A study note tracing one real request end-to-end, kept in `temp/` (tracked so th
 will be removed at full launch). Example request:
 
 ```
-task_type=knee_flexion  view=lateral  file=clip2.mp4   (FAKE_MODE=false, CPU)
+task_type=knee_flexion  view=lateral  file=knee_flex_nocalib.mp4   (FAKE_MODE=false, CPU)
 ```
 
 Result it produced: left knee, min 84.66°, max 177.43°, ROM 92.77°, mean conf 0.78,
@@ -79,7 +79,8 @@ screen] → 3D no-op → response`.
    frame fixes the wrong/less-reliable leg for the whole clip.
 2. **No subject tracking** (`pose/subject_selector.py`). Main subject = highest *mean* confidence per
    frame independently, so a clearer bystander can hijack it and the "main person" can flip between
-   frames. There is a near-empty `pose/tracking.py` stub — this was clearly planned.
+   frames. (A near-empty `pose/tracking.py` stub used to sit here; it was deleted as dead code —
+   the idea is still open work, just no longer a half-file.)
 3. **`mean_keypoint_confidence` averages all 26 joints** (`video_analysis.py:229`), including
    face/arms, so it under-reports how confident the *leg* joints (the ones actually measured) were.
 4. **Screening is rule-based** (`analysis/screening.py`), and the per-task thresholds in `task_config.py` are
@@ -91,10 +92,11 @@ screen] → 3D no-op → response`.
    quality flag — two different thresholds on the same ratio. **Note:** the field *name* cannot be
    changed — it is part of the master contract (`Project101_Team5.md:134`) and the MediaPipe-compatible
    response, so any rename is a coordinated cross-repo contract change. The *implementation* can be
-   improved behind the contract. Also: `services/analysis/quality.py::compute_pose_quality` duplicates this
-   computation and appears unused (dead code) — the live path computes it inline in the mapper.
+   improved behind the contract. (A duplicate `services/analysis/quality.py::compute_pose_quality`
+   was found unused and has since been deleted; the live path computes this inline in the mapper.)
 6. **`confidence_score` is a fixed 50/50 blend** (`analysis/screening.py:23`) of frame ratio and mean
-   confidence — arbitrary weights.
+   confidence — arbitrary weights. (Scheduled to change in P0 of `docs/08-scope-v2.md` to
+   0.40/0.40/0.20 with a new `tracking_stability_score` term.)
 7. **ROM = raw `max - min`** (`analysis/kinematics.py:12`) over the series — a single outlier frame
    (one spurious max or min) directly inflates ROM; no robust/percentile bounds.
 8. **EMA smoothing is causal** (`analysis/smoothing.py`), so it lags the signal. Fine for min/max magnitude,

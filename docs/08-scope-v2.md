@@ -137,7 +137,7 @@ Cheap alignment with the advisor's document:
 |---|---|
 | **BH** — board highlight in video / Three.js | The board is now optional; highlighting an optional accessory is low value. ~1–2 d whenever wanted. |
 | **Tier 1** — 5-STS, gait speed, TUG | Separate build. Note: bone-length scale makes **gait speed** newly feasible without a board, so this is the natural next phase. |
-| **M-B** — OpenSim gait2392 kinematics export | Still valid, but absent from the professor's spec. Confirm it is still wanted before spending 1.5–3 weeks. Phase E groundwork is in `dump/phase-e-handoff.md`. |
+| **M-B** — OpenSim gait2392 kinematics export | Still valid, but absent from the professor's spec. Confirm it is still wanted before spending 1.5–3 weeks. |
 | **CT muscle force** | Impossible without a force plate. Permanently out of scope for single-camera. |
 
 ---
