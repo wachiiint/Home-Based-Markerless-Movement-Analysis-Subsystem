@@ -360,7 +360,7 @@ failing the whole request.
 
 | Concern | Choice | Rationale |
 |---------|--------|-----------|
-| Language | Python 3.13 | Ecosystem for vision and numerical work |
+| Language | Python 3.11 or newer (3.13 in use) | Ecosystem for vision and numerical work |
 | API framework | FastAPI | Typed request and response models, automatic validation |
 | Pose estimation | RTMPose (Halpe26) via rtmlib | Accuracy and speed balance; includes foot keypoints |
 | 3D lifting | MotionBERT (ONNX) | Sequence-aware monocular lifting |
