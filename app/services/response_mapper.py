@@ -89,7 +89,7 @@ def build_assessment_response(
     )
 
 
-def build_fake_response(task_type: TaskType, view: str, sampled_fps: int) -> MovementAssessmentResponse:
+def build_fake_response(task_type: TaskType, view: str, side: str, sampled_fps: int) -> MovementAssessmentResponse:
     return build_assessment_response(
         task_type=task_type,
         view=view,
@@ -104,5 +104,5 @@ def build_fake_response(task_type: TaskType, view: str, sampled_fps: int) -> Mov
         risk_level="low",
         confidence_score=0.82,
         flags=[],
-        analyzed_side="left",
+        analyzed_side=side,
     )

@@ -93,6 +93,7 @@ video in
    ├─ 7. apply metric scale
    │
    ├─ 8. compute joint angles (both legs)
+   ├─ 8b. reject outlier frames
    ├─ 9. smooth the angle series
    ├─ 10. derive metrics
    ├─ 11. grade quality  ──▶ reject if too poor
@@ -166,6 +167,33 @@ one point on each adjoining segment. Knee flexion, for example, uses hip, knee, 
 Ankle tasks are computed in 2D, because the 3D skeleton has no toe joint. See
 [01-specification.md](01-specification.md) section 5.2.
 
+## Stage 8b — Reject outlier frames ✅
+
+The pose estimator occasionally assigns the left keypoints to the right limb for a few frames. The
+skeleton still looks plausible, so no confidence threshold catches it, but the angle series jumps to
+the other leg's angle and back. Because ROM is a maximum minus a minimum, **one such frame is enough
+to corrupt it** — and ROM is what drives screening.
+
+Each angle is therefore compared against a short window of its neighbours in time (a Hampel filter:
+local median, local spread). A value that disagrees with its own neighbourhood far more than the
+local noise justifies is replaced by that local median. The protocol asks for at least three
+repetitions per clip, so genuine extremes are visited repeatedly — a value that appears once and
+reverts is an artefact, not movement.
+
+The test is *local* rather than over the whole clip: a real sweep is meant to have a wide spread, so
+a whole-series test would either reject the genuine peaks or nothing at all. A steady sweep passes
+through untouched.
+
+Outliers are replaced rather than deleted, keeping the series evenly spaced — smoothness
+differentiates the series and assumes a fixed timestep.
+
+**Limit.** A mistrack lasting longer than the window becomes the local median itself and passes. When
+more than 10% of a leg's frames need repair, the response says so (`heavy_tracking_noise`) instead of
+presenting the cleaned numbers as sound. Catching sustained mistracking needs a geometric left/right
+consistency check on the keypoints, which is not built.
+
+Tunable via `OUTLIER_WINDOW_SEC`, `OUTLIER_N_SIGMA`, and `OUTLIER_MIN_SCALE_DEG`.
+
 ## Stage 9 — Smooth the angle series ✅
 
 Small frame-to-frame detection errors make the raw angle series jitter. A smoothing filter reduces
@@ -207,6 +235,32 @@ diagnosis.
 | Annotated video | The original clip with the detected skeleton drawn on it | ✅ |
 | Angle graph | The angle trajectory, for plotting | ⚠️ |
 | Motion simulation | 3D joint positions plus the muscle overlay | ✅ |
+| 2D keypoint sequence | Raw Halpe26 pixel coordinates and confidences per sampled frame, with skeleton edges | ✅ |
+
+**All four artifacts can be downloaded from the demo UI's `03 / ANALYSIS` panel.** They live in the
+session's temporary folder and are deleted on TTL expiry, so downloading is the only way to keep them.
+
+The three data artifacts come in **two formats, for two different jobs**:
+
+| Format | For | Shape | Offered in the UI? |
+|--------|-----|-------|--------------------|
+| **CSV** | Reading in a spreadsheet | One row per frame, three columns per joint. Metrics as a flat `metric,value` table | ✅ a download button each |
+| **JSON** | The complete record | Everything CSV cannot express | ⚠️ served, but by URL in the response only — no button |
+
+CSV is a **lossy view, not a second copy**. It drops the skeleton bone list, the analysis settings, and
+the nesting — so it cannot replay a run. A frame with no detected subject keeps its row with `detected`
+at 0 and its coordinate cells **empty rather than zero**, because a zero would read as a real position
+at the origin. The CSVs are generated per request from the stored JSON, so only one copy is on disk.
+
+The **2D keypoint sequence** is the odd one out: it is the *input* to Stages 6 through 13 rather than a
+picture of the output. Everything downstream of Stage 5 is a pure function of this sequence plus the
+settings, so a saved file replays a run whose video is gone — which matters, because Stage 14 stores
+metrics only and never keeps the video. Undetected frames are kept as nulls to preserve time alignment,
+and the settings that change the numbers (sample rate, confidence threshold, smoothing, outlier
+rejection) travel inside the file so a replay under a different `.env` cannot silently disagree.
+
+Reading a saved sequence back into the pipeline is **not built** — the files are written and downloadable,
+but nothing imports them yet.
 
 ## Stage 14 — Store the result ⚠️
 

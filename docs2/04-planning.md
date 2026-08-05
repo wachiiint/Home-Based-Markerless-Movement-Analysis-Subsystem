@@ -50,12 +50,17 @@ The response shape changes here, so this comes first — later work builds on it
 genuine safety gap.
 
 - [ ] **Restructure the response to the new contract** — 3 d · medium · everything downstream assumes it
-- [ ] **Add `side` to the analysis request** — 0.5 d · low · unblocks all pairing and symmetry work
+- [x] **Add `side` to the analysis request** — 0.5 d · low · unblocks all pairing and symmetry work
+      *Done ahead of the restructure: `side` is mandatory on `/api/movement/assess` and `/api/demo/assess`,
+      and only the declared leg is screened. Previously the resting contralateral leg was screened too, so
+      its near-zero ROM drove the headline risk to `high` on every unilateral clip.*
 - [ ] **Hard-reject guard on poor recordings** — 1 d · medium · **the safety fix**; stops plausible numbers coming from unusable video
 - [ ] **Add `tracking_stability_score`** — 2 d · medium · new metric; catches jumpy tracking that per-frame confidence misses
 - [ ] **Reweight confidence to 0.40 / 0.40 / 0.20** — 0.5 d · low · matches the advisor's specification
 - [ ] **Rename inferred quantities to `estimated_`** — 1 d · low · honesty, enforced in the field names
-- [ ] **Flag when the declared side is not the leg that moved** — 0.5 d · low · catches mislabelled recordings for free
+- [x] **Flag when the declared side is not the leg that moved** — 0.5 d · low · catches mislabelled recordings for free
+      *Emitted as `declared_side_did_not_move_most` (only when the other leg out-moves the declared one by
+      15°+, so a lateral view's occluded far leg does not trip it) and `declared_side_barely_moved`.*
 - [ ] **Update tests and the demo page to the new shape** — 1.5 d · low · keeps the suite green
 - [ ] **Trim the test suite while updating it** — 0.5 d · low · 105 tests is heavy for a project this size
 

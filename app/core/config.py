@@ -16,6 +16,11 @@ class Settings(BaseSettings):
     min_keypoint_confidence: float = Field(default=0.4, alias="MIN_KEYPOINT_CONFIDENCE")
     min_valid_frame_ratio: float = Field(default=0.6, alias="MIN_VALID_FRAME_RATIO")
     smoothing_alpha: float = Field(default=0.4, alias="SMOOTHING_ALPHA")
+    # Hampel spike rejection on the angle series -- see analysis/outliers.py.
+    # Window is in seconds so the behaviour is independent of FRAME_SAMPLE_FPS.
+    outlier_window_sec: float = Field(default=0.3, alias="OUTLIER_WINDOW_SEC")
+    outlier_n_sigma: float = Field(default=3.0, alias="OUTLIER_N_SIGMA")
+    outlier_min_scale_deg: float = Field(default=2.0, alias="OUTLIER_MIN_SCALE_DEG")
     enable_3d: bool = Field(default=False, alias="ENABLE_3D")
     motionbert_model_path: str = Field(default="", alias="MOTIONBERT_MODEL_PATH")
     calibration_data_dir: str = Field(default="data/calibration", alias="CALIBRATION_DATA_DIR")

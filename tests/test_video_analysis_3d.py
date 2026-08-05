@@ -6,15 +6,13 @@ from app.schemas.movement import TaskType
 from app.services.lifting.lifter import StubLifter
 from app.services.pose.pose_sequence import FramePose2D, PoseSequence
 from app.services.video_analysis import (
+    LegAnalysis,
     _analyze_both_legs,
     _augment_with_3d,
-    _screen_both_legs,
-    _select_analyzed_side,
+    _leg_participated,
+    _recording_warnings,
+    _screen_declared_leg,
 )
-
-
-def _selected_side(seq, task_type):
-    return _select_analyzed_side(_analyze_both_legs(seq, task_type, SETTINGS))
 
 SETTINGS = Settings()
 
@@ -102,28 +100,73 @@ def _one_leg_moving_sequence(moving="right", t=8):
     return PoseSequence(frames=frames, width=1000, height=1000)
 
 
-def test_select_side_picks_moving_leg_over_first_frame_confidence():
-    seq = _one_leg_moving_sequence(moving="right")
-    assert _selected_side(seq, TaskType.KNEE_EXTENSION) == "right"
-
-
-def test_select_side_symmetric_left():
-    seq = _one_leg_moving_sequence(moving="left")
-    assert _selected_side(seq, TaskType.KNEE_EXTENSION) == "left"
-
-
 def test_reports_both_legs():
     legs = _analyze_both_legs(_one_leg_moving_sequence(moving="right"), TaskType.KNEE_EXTENSION, SETTINGS)
     assert set(legs) == {"left", "right"}  # both legs are analyzed, not just the mover
     assert legs["right"].rom > legs["left"].rom
 
 
-def test_worse_leg_drives_screening_risk():
-    # Right leg sweeps a wide arc; the still left leg has ~0 ROM (below borderline).
+def test_resting_leg_does_not_drive_screening_risk():
+    # Right leg sweeps a wide arc; the still left leg has ~0 ROM. Screening the
+    # declared (right) leg must ignore the resting one entirely.
     legs = _analyze_both_legs(_one_leg_moving_sequence(moving="right"), TaskType.KNEE_EXTENSION, SETTINGS)
-    risk, _conf, flags = _screen_both_legs(legs, TaskType.KNEE_EXTENSION, SETTINGS)
+    risk, _conf, flags = _screen_declared_leg(legs["right"], TaskType.KNEE_EXTENSION, SETTINGS)
+    assert risk == "low"
+    assert not any(flag.startswith("left:") for flag in flags)
+
+
+def test_declared_resting_leg_is_still_screened():
+    # If the clinician declares the leg that did not move, that IS a finding --
+    # abstaining would hide a genuinely immobile limb.
+    legs = _analyze_both_legs(_one_leg_moving_sequence(moving="right"), TaskType.KNEE_EXTENSION, SETTINGS)
+    risk, _conf, flags = _screen_declared_leg(legs["left"], TaskType.KNEE_EXTENSION, SETTINGS)
     assert risk == "high"
-    assert any(flag.startswith("left:") for flag in flags)  # the still leg is flagged, side-tagged
+    assert "left: rom_below_borderline" in flags
+
+
+def test_participation_matches_symmetry_definition():
+    legs = _analyze_both_legs(_one_leg_moving_sequence(moving="right"), TaskType.KNEE_EXTENSION, SETTINGS)
+    assert _leg_participated(legs["right"], TaskType.KNEE_EXTENSION)
+    assert not _leg_participated(legs["left"], TaskType.KNEE_EXTENSION)
+
+
+def _leg(side, rom, valid_frames=60, outliers=0):
+    return LegAnalysis(
+        side=side, min_angle=180.0 - rom, max_angle=180.0, rom=rom,
+        valid_frames=valid_frames, valid_frame_ratio=1.0, mean_confidence=0.9,
+        smoothness={}, outlier_frames=outliers,
+    )
+
+
+def test_no_warning_when_the_declared_leg_is_the_mover():
+    legs = {"left": _leg("left", 80.0), "right": _leg("right", 3.0)}
+    assert _recording_warnings(legs, "left", TaskType.KNEE_FLEXION) == []
+
+
+def test_warns_when_the_other_leg_out_moved_the_declared_one():
+    legs = {"left": _leg("left", 5.0), "right": _leg("right", 80.0)}
+    warnings = _recording_warnings(legs, "left", TaskType.KNEE_FLEXION)
+    assert "declared_side_did_not_move_most" in warnings
+    assert "declared_side_barely_moved" in warnings
+
+
+def test_close_sides_do_not_trip_the_mismatch_warning():
+    # A lateral view often tracks the occluded far leg along with the near one.
+    # Warning on that would cry wolf on almost every clip.
+    legs = {"left": _leg("left", 80.0), "right": _leg("right", 88.0)}
+    assert _recording_warnings(legs, "left", TaskType.KNEE_FLEXION) == []
+
+
+def test_heavy_outlier_rejection_is_reported():
+    legs = {"left": _leg("left", 80.0, valid_frames=60, outliers=14)}
+    warnings = _recording_warnings(legs, "left", TaskType.KNEE_FLEXION)
+    assert any(w.startswith("heavy_tracking_noise:") for w in warnings)
+    assert "14 of 60" in warnings[0]
+
+
+def test_a_few_repaired_frames_are_routine():
+    legs = {"left": _leg("left", 80.0, valid_frames=60, outliers=4)}
+    assert _recording_warnings(legs, "left", TaskType.KNEE_FLEXION) == []
 
 
 def test_no_lifter_stays_2d():

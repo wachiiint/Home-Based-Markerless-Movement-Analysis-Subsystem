@@ -35,12 +35,16 @@ class SideRom:
     valid_frames: int
 
 
-_MIN_SIDE_VALID_FRAMES = 4
+MIN_SIDE_VALID_FRAMES = 4
 
 
-def _participated(side: SideRom | None, participation_rom_deg: float, min_valid_frames: int) -> bool:
+def participated(side: SideRom | None, participation_rom_deg: float, min_valid_frames: int = MIN_SIDE_VALID_FRAMES) -> bool:
     """A leg counts as performing the movement only if it was tracked over
-    enough frames AND swept at least the task's participation ROM."""
+    enough frames AND swept at least the task's participation ROM.
+
+    Public because screening needs the same test: a leg that did not perform the
+    movement must not be screened for range of motion, or a resting contralateral
+    leg drives the headline risk to ``high`` on every unilateral clip."""
     return (
         side is not None
         and side.valid_frames >= min_valid_frames
@@ -59,7 +63,7 @@ def symmetry_index_score(left_rom: float, right_rom: float) -> float | None:
 def compute_symmetry(
     sides: dict[str, SideRom],
     participation_rom_deg: float,
-    min_valid_frames: int = _MIN_SIDE_VALID_FRAMES,
+    min_valid_frames: int = MIN_SIDE_VALID_FRAMES,
 ) -> float | None:
     """Normalized left/right asymmetry, or None when only one leg moved.
 
@@ -70,8 +74,8 @@ def compute_symmetry(
     left = sides.get("left")
     right = sides.get("right")
     if not (
-        _participated(left, participation_rom_deg, min_valid_frames)
-        and _participated(right, participation_rom_deg, min_valid_frames)
+        participated(left, participation_rom_deg, min_valid_frames)
+        and participated(right, participation_rom_deg, min_valid_frames)
     ):
         return None
     return symmetry_index_score(left.rom_deg, right.rom_deg)

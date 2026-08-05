@@ -11,7 +11,7 @@ def test_fake_mode_contract(monkeypatch):
         response = client.post(
             "/api/movement/assess",
             headers={"X-Internal-Service-Key": "dev-local-analysis-key"},
-            data={"patient_id": "PT-001", "task_type": "knee_flexion", "view": "lateral"},
+            data={"patient_id": "PT-001", "task_type": "knee_flexion", "view": "lateral", "side": "left"},
             files={"file": ("clip.mp4", b"not-empty", "video/mp4")},
         )
 
@@ -23,6 +23,37 @@ def test_fake_mode_contract(monkeypatch):
     assert payload["screening_result"]["risk_level"] in {"low", "moderate", "high"}
     assert 0 <= payload["screening_result"]["confidence_score"] <= 1
     assert 0 <= payload["clinical_metrics"]["pose_quality"]["mean_keypoint_confidence"] <= 1
+    # the declared side is echoed back, not guessed
+    assert payload["video_metadata"]["analyzed_side"] == "left"
+
+
+def test_side_is_required(monkeypatch):
+    monkeypatch.setenv("FAKE_MODE", "true")
+    get_settings.cache_clear()
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/movement/assess",
+            headers={"X-Internal-Service-Key": "dev-local-analysis-key"},
+            data={"patient_id": "PT-001", "task_type": "knee_flexion", "view": "lateral"},
+            files={"file": ("clip.mp4", b"not-empty", "video/mp4")},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {"detail": "side must be 'left' or 'right'"}
+
+
+def test_invalid_side_is_400(monkeypatch):
+    monkeypatch.setenv("FAKE_MODE", "true")
+    get_settings.cache_clear()
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/movement/assess",
+            headers={"X-Internal-Service-Key": "dev-local-analysis-key"},
+            data={"patient_id": "PT-001", "task_type": "knee_flexion", "view": "lateral", "side": "both"},
+            files={"file": ("clip.mp4", b"not-empty", "video/mp4")},
+        )
+
+    assert response.status_code == 400
 
 
 def test_unknown_task_type_is_400(monkeypatch):
@@ -32,7 +63,7 @@ def test_unknown_task_type_is_400(monkeypatch):
         response = client.post(
             "/api/movement/assess",
             headers={"X-Internal-Service-Key": "dev-local-analysis-key"},
-            data={"patient_id": "PT-001", "task_type": "bad_task", "view": "lateral"},
+            data={"patient_id": "PT-001", "task_type": "bad_task", "view": "lateral", "side": "left"},
             files={"file": ("clip.mp4", b"not-empty", "video/mp4")},
         )
 
@@ -47,7 +78,7 @@ def test_broken_file_is_422(monkeypatch):
         response = client.post(
             "/api/movement/assess",
             headers={"X-Internal-Service-Key": "dev-local-analysis-key"},
-            data={"patient_id": "PT-001", "task_type": "knee_flexion", "view": "lateral"},
+            data={"patient_id": "PT-001", "task_type": "knee_flexion", "view": "lateral", "side": "left"},
             files={"file": ("clip.mp4", b"", "video/mp4")},
         )
 

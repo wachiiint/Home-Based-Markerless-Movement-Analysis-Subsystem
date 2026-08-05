@@ -44,7 +44,8 @@ and a 3D motion simulation.
 - `app/core/` — settings (`config.py`), API-key auth (`security.py`), logging.
 - `app/schemas/` — request enums (`movement.py`) and response models (`response.py`).
 - `app/services/video_io.py`, `video_analysis.py`, `response_mapper.py` — frame sampling, the analysis orchestrator, response assembly.
-- `app/services/pose/` — `pose_estimator.py` (RTMPose via rtmlib), `pose_sequence.py`, `subject_selector.py`.
+- `app/services/csv_export.py` — flat CSV views of the export payloads.
+- `app/services/pose/` — `pose_estimator.py` (RTMPose via rtmlib), `pose_sequence.py`, `subject_selector.py`, `pose2d_export.py`.
 - `app/services/analysis/` — `kinematics.py`, `smoothing.py`, `screening.py`, `smoothness.py`, `symmetry.py`.
 - `app/services/calibration/` — ChArUco board handling: rendering, detection, intrinsics/extrinsics, device store, print verification, diagnostics, floor transform, per-session calibration.
 - `app/services/lifting/` — Halpe26 to H36M17 conversion, normalisation, `Lifter` protocol with `MotionBertAdapter` and `StubLifter`, `pipeline.py`, 3D angles, metric scale, guards, muscle overlay, viewer export.
@@ -52,19 +53,31 @@ and a 3D motion simulation.
 - `app/tools/` — CLIs: `generate_board`, `calibrate_device`, `extract_gait2392_muscles`.
 - `app/utils/math_utils.py` — angle and vector helpers.
 - `app/static/` — browser interface (upload, results, 3D viewer with muscle overlay).
-- `tests/` — 105 tests covering the API contract, kinematics, lifting, calibration, muscles, smoothness, symmetry.
+- `tests/` — 138 tests covering the API contract, kinematics, lifting, calibration, muscles, smoothness, symmetry, exports.
 
 ---
 
 ## What works today
 
 - **2D analysis (always).** RTMPose Halpe26 on sampled frames, smoothed angle series, min/max/ROM, screening. Annotated MP4 returned.
-- **Both legs analysed on every clip.** Side-prefixed metric keys; risk level from the worse leg.
+- **Outlier rejection on the angle series.** Hampel filter (local median/MAD) before smoothing, so a
+  few frames of left/right tracking swap cannot corrupt min/max/ROM. Heavy rejection is reported as
+  `heavy_tracking_noise` rather than hidden. Does **not** catch a swap that outlasts the window.
+- **Both legs analysed on every clip.** Side-prefixed metric keys. The request's mandatory `side` says
+  which leg was instructed; **only that leg is screened**, the other is a contralateral reference.
+  A mismatch between the declared side and the leg that actually moved is reported, never auto-corrected.
 - **Smoothness.** LDLJ, SPARC, and movement-unit count per side.
 - **Symmetry.** Implemented, but scoped to a single clip — which is the wrong basis. Being rebuilt as a cross-recording comparison in P4.
 - **Optional 3D.** MotionBERT ONNX lift, 3D hip and knee angles, metric scale, camera-to-floor transform. Best-effort: any failure falls back to 2D and reports the mode. **Frequently falls back in practice.**
 - **Optional ChArUco calibration.** Per-device intrinsics and per-session floor plane. Being demoted to optional in P2 — bone length replaces it as the scale source.
 - **Muscle overlay.** Five muscle groups per leg on the 3D skeleton, coloured by a kinematic length proxy. Display only — never force or activation.
+- **Artifact export from the demo UI.** The `03 / ANALYSIS` panel offers the assessment metrics, the raw
+  2D keypoint sequence (Halpe26 pixel coords, scores, skeleton edges, plus the settings needed to replay
+  the run), and the 3D skeleton — each as **CSV**, the format a person opens and reads. The complete
+  JSON record is still written and served, but its URL travels in the response instead of getting a
+  button. CSV is a lossy view generated per request from the stored JSON (`csv_export.py`); it drops
+  topology and settings and so cannot replay a run. All are TTL-deleted server-side, so downloading is the only way to keep them.
+  **Re-importing a saved file is not built** — export only.
 - **FAKE_MODE.** Contract-shaped response without inference; used by tests.
 
 **Not built:** bone-length input and scale, angle trajectories in the response, angular velocity and

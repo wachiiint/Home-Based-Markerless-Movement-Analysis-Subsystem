@@ -19,12 +19,14 @@ from app.services.lifting.metric_scale import resolve_metric_scale
 from app.services.lifting.pipeline import lift_pose_sequence
 from app.services.lifting.pose3d_export import build_pose3d_payload
 from app.services.pose.pose_estimator import PoseEstimator
+from app.services.pose.pose2d_export import build_pose2d_payload
 from app.services.pose.pose_sequence import FramePose2D, PoseSequence
 from app.services.response_mapper import build_assessment_response
 from app.services.analysis.screening import screen_rom
+from app.services.analysis.outliers import half_window_for, reject_outliers
 from app.services.analysis.smoothing import exponential_moving_average
 from app.services.analysis.smoothness import compute_smoothness
-from app.services.analysis.symmetry import SideRom, compute_symmetry
+from app.services.analysis.symmetry import SideRom, compute_symmetry, participated
 from app.services.pose.subject_selector import select_main_subject
 from app.services.video_io import read_video_metadata
 
@@ -41,12 +43,14 @@ def _angle_for_frame(keypoints, scores, task_type: TaskType, side: str, threshol
     return three_point_angle(points[1], points[0], points[2])
 
 
-# Below this, the two legs' motion is treated as a tie and the "primary" side
-# (used for 3D + the representative pose-quality reading) is decided by keypoint
-# confidence instead of range of motion.
+# Margin by which the contralateral leg must out-move the declared one before we
+# say the wrong side was recorded. Below this the two are a tie -- reading meaning
+# into a few degrees would flag almost every clip.
 _SIDE_ROM_TIE_DEG = 15.0
 
-_RISK_ORDER = {"low": 0, "moderate": 1, "high": 2}
+# Fraction of a leg's frames that may be repaired as outliers before the result
+# stops being trustworthy and the response says so.
+_OUTLIER_WARN_RATIO = 0.10
 
 
 @dataclass(frozen=True)
@@ -62,6 +66,9 @@ class LegAnalysis:
     valid_frame_ratio: float
     mean_confidence: float
     smoothness: dict
+    # Frames whose angle disagreed with its neighbours (usually a brief
+    # left/right tracking swap) and was repaired before min/max/ROM.
+    outlier_frames: int = 0
 
 
 def _analyze_leg(sequence: PoseSequence, task_type: TaskType, side: str, settings: Settings, processed_frames: int) -> LegAnalysis | None:
@@ -78,7 +85,15 @@ def _analyze_leg(sequence: PoseSequence, task_type: TaskType, side: str, setting
             confidences.append(float(np.mean(pose.scores)))
     if not angles:
         return None
-    smoothed = exponential_moving_average(angles, settings.smoothing_alpha)
+    # Reject spikes BEFORE smoothing: the EMA would smear a bad frame across its
+    # neighbours, and min/max would then be wrong over a wider stretch.
+    cleaned = reject_outliers(
+        angles,
+        half_window=half_window_for(settings.frame_sample_fps, settings.outlier_window_sec),
+        n_sigma=settings.outlier_n_sigma,
+        min_scale=settings.outlier_min_scale_deg,
+    )
+    smoothed = exponential_moving_average(cleaned.values, settings.smoothing_alpha)
     min_angle, max_angle, rom = range_of_motion(smoothed)
     return LegAnalysis(
         side=side,
@@ -89,6 +104,7 @@ def _analyze_leg(sequence: PoseSequence, task_type: TaskType, side: str, setting
         valid_frame_ratio=len(angles) / processed_frames if processed_frames else 0.0,
         mean_confidence=float(np.mean(confidences)),
         smoothness=compute_smoothness(smoothed, settings.frame_sample_fps),
+        outlier_frames=cleaned.replaced_count,
     )
 
 
@@ -103,48 +119,74 @@ def _analyze_both_legs(sequence: PoseSequence, task_type: TaskType, settings: Se
     return legs
 
 
-def _select_analyzed_side(legs: dict[str, LegAnalysis]) -> str | None:
-    """Pick the *primary* leg: the exercised one (larger ROM), confidence breaking
-    ties. Both legs are reported regardless; this only drives the single-leg 3D
-    lift and the representative pose-quality reading.
+def _leg_participated(leg: LegAnalysis | None, task_type: TaskType) -> bool:
+    """Did this leg actually perform the task? Same participation test symmetry
+    uses, so screening, smoothness, and symmetry all agree on what "moved" means."""
+    if leg is None:
+        return False
+    return participated(
+        SideRom(rom_deg=leg.rom, mean_confidence=leg.mean_confidence, valid_frames=leg.valid_frames),
+        TASK_CONFIGS[task_type].borderline_rom_deg,
+    )
+
+
+def _recording_warnings(legs: dict[str, LegAnalysis], side: str, task_type: TaskType) -> list[str]:
+    """Non-fatal notes about the recording itself, as opposed to the patient.
+
+    These say "this clip may not show what the form claims" -- a data-entry or
+    filming problem. They never change the numbers; the response reports what was
+    measured and lets the clinician judge.
     """
-    if not legs:
-        return None
-    if len(legs) == 1:
-        return next(iter(legs))
-    left, right = legs["left"], legs["right"]
-    if abs(left.rom - right.rom) >= _SIDE_ROM_TIE_DEG:
-        return "left" if left.rom > right.rom else "right"
-    return "left" if left.mean_confidence >= right.mean_confidence else "right"
+    subject = legs[side]
+    warnings: list[str] = []
 
+    other = next((leg for s, leg in legs.items() if s != side), None)
+    # Only a clear margin counts as a mismatch. Two legs within the tie band --
+    # common in a lateral view, where the occluded far leg tracks the near one --
+    # is not evidence that the wrong side was filmed, and warning on it would
+    # cry wolf on almost every clip.
+    if other is not None and other.rom - subject.rom >= _SIDE_ROM_TIE_DEG:
+        # The clip disagrees with the instruction: either the wrong leg was
+        # filmed or the form was filled in wrongly. Report, do not silently swap.
+        warnings.append("declared_side_did_not_move_most")
 
-def _screen_both_legs(legs: dict[str, LegAnalysis], task_type: TaskType, settings: Settings) -> tuple[str, float, list[str]]:
-    """Screen each leg; the top-line risk is the worse side. Flags are tagged by
-    side so the headline has a visible reason (e.g. ``right: rom_below_borderline``)."""
-    config = TASK_CONFIGS[task_type]
-    risk, confidence, flags = "low", 1.0, []
-    for side in ("left", "right"):
-        leg = legs.get(side)
-        if leg is None:
-            continue
-        leg_risk, leg_conf, leg_flags = screen_rom(
-            rom_deg=leg.rom,
-            expected_rom_deg=config.expected_rom_deg,
-            borderline_rom_deg=config.borderline_rom_deg,
-            valid_frame_ratio=leg.valid_frame_ratio,
-            min_valid_frame_ratio=settings.min_valid_frame_ratio,
-            mean_keypoint_confidence=leg.mean_confidence,
+    if not _leg_participated(subject, task_type):
+        warnings.append("declared_side_barely_moved")
+
+    if subject.valid_frames and subject.outlier_frames / subject.valid_frames > _OUTLIER_WARN_RATIO:
+        # A few repaired frames are routine. Many means the tracker kept losing
+        # the leg, and a sustained swap can outlast the rejection window -- so
+        # say so rather than present the cleaned numbers as sound.
+        warnings.append(
+            f"heavy_tracking_noise: {subject.outlier_frames} of {subject.valid_frames} "
+            f"{side}-leg frames were outliers"
         )
-        flags.extend(f"{side}: {flag}" for flag in leg_flags)
-        if leg.rom < config.borderline_rom_deg:
-            flags.append(f"{side}: rom_below_borderline")
-        elif leg.rom < config.expected_rom_deg:
-            flags.append(f"{side}: rom_below_expected")
-        if _RISK_ORDER[leg_risk] > _RISK_ORDER[risk]:
-            risk, confidence = leg_risk, leg_conf
-        elif risk == "low" and leg_risk == "low":
-            # both low so far -> keep the least confident reading as the headline
-            confidence = min(confidence, leg_conf)
+    return warnings
+
+
+def _screen_declared_leg(leg: LegAnalysis, task_type: TaskType, settings: Settings) -> tuple[str, float, list[str]]:
+    """Screen the leg the patient was instructed to move, and only that leg.
+
+    The contralateral leg is a resting reference: its numbers are reported, but
+    screening it would flag ``rom_below_borderline`` on every unilateral clip and
+    push the headline risk to ``high`` for a leg that was never asked to move.
+    Flags stay side-tagged so the headline keeps a visible reason.
+    """
+    config = TASK_CONFIGS[task_type]
+    side = leg.side
+    risk, confidence, flags = screen_rom(
+        rom_deg=leg.rom,
+        expected_rom_deg=config.expected_rom_deg,
+        borderline_rom_deg=config.borderline_rom_deg,
+        valid_frame_ratio=leg.valid_frame_ratio,
+        min_valid_frame_ratio=settings.min_valid_frame_ratio,
+        mean_keypoint_confidence=leg.mean_confidence,
+    )
+    flags = [f"{side}: {flag}" for flag in flags]
+    if leg.rom < config.borderline_rom_deg:
+        flags.append(f"{side}: rom_below_borderline")
+    elif leg.rom < config.expected_rom_deg:
+        flags.append(f"{side}: rom_below_expected")
     return risk, confidence, flags
 
 
@@ -296,15 +338,32 @@ def _augment_with_3d(
 
 @dataclass
 class VideoAnalysis:
-    """Analysis output. ``pose_3d`` is the demo viewer's display payload and is
-    deliberately kept beside the response rather than inside it, so the clinical
-    contract carries no raw coordinates."""
+    """Analysis output. ``pose_3d`` (viewer display payload) and ``pose_2d`` (the
+    raw sampled sequence, for export and replay) are deliberately kept beside the
+    response rather than inside it, so the clinical contract carries no raw
+    coordinates."""
 
     response: object
     pose_3d: dict | None = None
+    pose_2d: dict | None = None
 
 
-def analyze_video(input_path: Path, output_path: Path, task_type: TaskType, view: str, settings: Settings, estimator: PoseEstimator, lifter=None, device_store=None, subject_height_mm: float | None = None, want_pose_3d: bool = False, device_make: str = "", device_model: str = "") -> VideoAnalysis:
+# Settings that change the numbers downstream of the keypoints. Recorded in the
+# 2D export so a saved sequence replays to the same result -- see pose2d_export.
+_REPLAY_SETTING_FIELDS = (
+    "frame_sample_fps",
+    "min_keypoint_confidence",
+    "smoothing_alpha",
+    "outlier_window_sec",
+    "outlier_n_sigma",
+    "outlier_min_scale_deg",
+)
+
+
+def analyze_video(input_path: Path, output_path: Path, task_type: TaskType, view: str, side: str, settings: Settings, estimator: PoseEstimator, lifter=None, device_store=None, subject_height_mm: float | None = None, want_pose_3d: bool = False, want_pose_2d: bool = False, device_make: str = "", device_model: str = "") -> VideoAnalysis:
+    """``side`` is the leg the patient was *instructed* to move. It drives
+    screening, the 3D lift, and the pose-quality reading; the other leg is
+    analysed and reported as a contralateral reference only."""
     metadata = read_video_metadata(input_path)
     calibrator = SessionCalibrator(device_store) if (lifter is not None and device_store is not None) else None
     observer = calibrator.observe if calibrator is not None else None
@@ -313,14 +372,15 @@ def analyze_video(input_path: Path, output_path: Path, task_type: TaskType, view
     processed_frames = sequence.processed_frames
     config = TASK_CONFIGS[task_type]
 
-    # Analyze BOTH legs and report each to the doctor -- no single-leg selection.
-    # A "primary" side is still chosen (larger ROM = the exercised leg) only to
-    # drive the single-leg 3D lift and the representative pose-quality reading.
+    # Both legs are analysed and reported, but only the declared one is judged.
     legs = _analyze_both_legs(sequence, task_type, settings)
     if not legs:
         raise ValueError("no usable pose found in video")
-    side = _select_analyzed_side(legs)
-    analyzed_side = "both" if len(legs) == 2 else side
+    if side not in legs:
+        raise ValueError(f"the {side} leg was never clearly visible; re-record with that side facing the camera")
+    subject = legs[side]
+
+    warnings = _recording_warnings(legs, side, task_type)
 
     joint_angles: dict[str, float] = {}
     smoothness: dict[str, dict] = {}
@@ -328,17 +388,16 @@ def analyze_video(input_path: Path, output_path: Path, task_type: TaskType, view
         joint_angles[f"{leg_side}_{config.max_key}"] = round(leg.max_angle, 2)
         joint_angles[f"{leg_side}_{config.min_key}"] = round(leg.min_angle, 2)
         joint_angles[f"{leg_side}_{config.rom_key}"] = leg.rom
-        if leg.smoothness:
+        # Smoothness of a stationary limb is meaningless -- omit it rather than
+        # print a number that invites misreading.
+        if leg.smoothness and _leg_participated(leg, task_type):
             smoothness[leg_side] = leg.smoothness
 
     symmetry_score = compute_symmetry(
         {s: SideRom(rom_deg=leg.rom, mean_confidence=leg.mean_confidence, valid_frames=leg.valid_frames) for s, leg in legs.items()},
         config.borderline_rom_deg,
     )
-    risk, confidence, flags = _screen_both_legs(legs, task_type, settings)
-
-    # pose_quality reports the exercised (primary) leg -- the rep the clinician cares about.
-    primary = legs[side]
+    risk, confidence, flags = _screen_declared_leg(subject, task_type, settings)
 
     device_meta = extract_capture_metadata(input_path)
     # MP4 upload strips EXIF make/model, so the video-derived id degrades to
@@ -360,14 +419,14 @@ def analyze_video(input_path: Path, output_path: Path, task_type: TaskType, view
         fps=metadata["fps"],
         processed_frames=processed_frames,
         sampled_fps=settings.frame_sample_fps,
-        angle_min=primary.min_angle,
-        angle_max=primary.max_angle,
-        mean_keypoint_confidence=primary.mean_confidence,
-        valid_frame_ratio=primary.valid_frame_ratio,
+        angle_min=subject.min_angle,
+        angle_max=subject.max_angle,
+        mean_keypoint_confidence=subject.mean_confidence,
+        valid_frame_ratio=subject.valid_frame_ratio,
         risk_level=risk,
         confidence_score=confidence,
         flags=flags,
-        analyzed_side=analyzed_side,
+        analyzed_side=side,
         joint_angles_override=joint_angles,
         analysis_mode=three_d.analysis_mode,
         joint_angles_3d=three_d.joint_angles_3d,
@@ -375,8 +434,21 @@ def analyze_video(input_path: Path, output_path: Path, task_type: TaskType, view
         scale_source=three_d.scale_source,
         transformation_6dof=three_d.transformation_6dof,
         board_diagnostics=three_d.board_diagnostics,
-        guard_warnings=three_d.guard_warnings,
+        guard_warnings=warnings + three_d.guard_warnings,
         smoothness=smoothness,
         symmetry_index_score=symmetry_score,
     )
-    return VideoAnalysis(response=response, pose_3d=three_d.pose_3d)
+    pose_2d = None
+    if want_pose_2d:
+        # Pure serialisation of a sequence already in memory -- no inference, so
+        # this costs nothing beyond the JSON.
+        pose_2d = build_pose2d_payload(
+            sequence,
+            sampled_fps=settings.frame_sample_fps,
+            analyzed_side=side,
+            task_type=task_type.value,
+            source_fps=metadata["fps"],
+            duration_sec=metadata["duration_sec"],
+            analysis_settings={field: getattr(settings, field) for field in _REPLAY_SETTING_FIELDS},
+        )
+    return VideoAnalysis(response=response, pose_3d=three_d.pose_3d, pose_2d=pose_2d)

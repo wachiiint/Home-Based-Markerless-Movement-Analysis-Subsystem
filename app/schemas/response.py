@@ -12,6 +12,8 @@ class VideoMetadata(BaseModel):
     task_type: str
     processed_frames: int
     sampled_fps: int
+    # The leg the patient was instructed to move, echoed back from the request.
+    # The other leg's metrics are still reported, as a contralateral reference.
     analyzed_side: str | None = None
 
 
@@ -69,6 +71,14 @@ class HealthResponse(BaseModel):
 class DemoAssessmentResponse(BaseModel):
     assessment: MovementAssessmentResponse
     annotated_video_url: str
-    # Lazily fetched by the 3D viewer; null when the lifter is off/unavailable.
+    # Download targets for the export row. The JSON form of each artifact is the
+    # complete one; the CSV is a flat spreadsheet view that drops the skeleton
+    # topology and the replay settings. Nulls mean that run produced no 3D/2D.
+    assessment_url: str
+    assessment_csv_url: str
+    # pose_3d_url is also what the 3D viewer fetches to render.
     pose_3d_url: str | None = None
+    pose_3d_csv_url: str | None = None
+    pose_2d_url: str | None = None
+    pose_2d_csv_url: str | None = None
     expires_at: str

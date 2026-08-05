@@ -188,11 +188,40 @@ function renderComparison(metrics) {
   return `<table class="compare-table"><thead><tr><th>Metric</th><th>Left</th><th>Right</th></tr></thead><tbody>${body}${symmetryRow}</tbody></table>`;
 }
 
+// Warnings about the declared side are a data-entry / recording problem, not a
+// 3D-pipeline problem, so they get their own notice above the analysis one.
+const SIDE_WARNINGS = {
+  declared_side_did_not_move_most: 'The other leg moved more than the one you selected — check that the correct side was recorded and selected.',
+  declared_side_barely_moved: 'The selected leg barely moved in this clip. The range of motion below may not reflect a real attempt.',
+};
+
+// Prefixed warnings carry a computed detail after the colon, so they are matched
+// by prefix rather than looked up whole.
+const PREFIXED_WARNINGS = {
+  heavy_tracking_noise: (detail) => `Tracking was unstable —${detail}. Angles were repaired where possible, but re-record with the whole leg clearly in frame.`,
+};
+
+const prefixOf = (warning) => warning.split(':')[0];
+
+function renderSideNotice(assessment) {
+  const notice = document.querySelector('#side-notice');
+  const messages = (assessment.guard_warnings || [])
+    .map((w) => {
+      if (w in SIDE_WARNINGS) return SIDE_WARNINGS[w];
+      const build = PREFIXED_WARNINGS[prefixOf(w)];
+      return build ? build(w.slice(w.indexOf(':') + 1)) : null;
+    })
+    .filter(Boolean);
+  notice.hidden = messages.length === 0;
+  notice.textContent = messages.join(' ');
+}
+
 // Explain the analysis mode instead of silently returning a 2D result: when 3D
 // was expected but did not happen, say why (calibration/board guard warnings).
 function renderAnalysisNotice(assessment) {
   const notice = document.querySelector('#analysis-notice');
-  const warnings = assessment.guard_warnings || [];
+  const warnings = (assessment.guard_warnings || [])
+    .filter((w) => !(w in SIDE_WARNINGS) && !(prefixOf(w) in PREFIXED_WARNINGS));
   const board = assessment.board_diagnostics;
   if (assessment.analysis_mode === '3d') {
     notice.className = 'inline-notice ok';
@@ -211,6 +240,44 @@ function renderAnalysisNotice(assessment) {
   } else {
     notice.hidden = true;
   }
+}
+
+// ---- Export (03 / ANALYSIS) ----------------------------------------------
+// The panel offers the CSV view of each artifact, because that is the one a
+// person opens and reads. The complete JSON record is still served -- its URL
+// travels in the response -- but it is for programs, so it gets no button.
+// The files live in the session's temp folder and are deleted on TTL expiry,
+// so the whole point of these buttons is to save a copy first. Same-origin
+// <a download> is all it takes -- no fetch, no blobs.
+const exportNote = document.querySelector('#export-note');
+
+// [anchor id, response field, download suffix]
+const EXPORT_TARGETS = [
+  ['export-assessment-csv', 'assessment_csv_url', 'metrics.csv'],
+  ['export-pose2d-csv', 'pose_2d_csv_url', 'pose2d.csv'],
+  ['export-pose3d-csv', 'pose_3d_csv_url', 'pose3d.csv'],
+];
+
+function renderExports(payload) {
+  const sessionId = payload.assessment.session_id;
+  for (const [id, field, suffix] of EXPORT_TARGETS) {
+    const anchor = document.querySelector('#' + id);
+    const href = payload[field];
+    anchor.hidden = !href;
+    if (!href) {
+      anchor.removeAttribute('href');
+      continue;
+    }
+    anchor.href = href;
+    anchor.download = `${sessionId}-${suffix}`;
+  }
+
+  const notes = [];
+  if (!payload.pose_3d_csv_url) notes.push('3D skeleton unavailable — the lifter is off or the lift failed.');
+  if (!payload.pose_2d_csv_url) notes.push('2D keypoints unavailable for this run.');
+  notes.push('CSV is one row per frame, for reading — it drops the skeleton bone list and the settings needed to reproduce the run, which only the JSON response carries.');
+  notes.push(`Files expire at ${new Date(payload.expires_at).toLocaleTimeString()}.`);
+  exportNote.textContent = notes.join(' ');
 }
 
 const viewerSection = document.querySelector('#viewer-section');
@@ -363,7 +430,9 @@ form.addEventListener('submit', async (event) => {
     document.querySelector('#side-value').textContent = assessment.video_metadata.analyzed_side || '—';
     document.querySelector('#valid-value').textContent = percent(quality.valid_frame_ratio);
     document.querySelector('#angle-metrics').innerHTML = renderComparison(assessment.clinical_metrics);
+    renderSideNotice(assessment);
     renderAnalysisNotice(assessment);
+    renderExports(payload);
     metricsSection.hidden = false;
     await showPose3d(payload.pose_3d_url);
   } catch (error) {

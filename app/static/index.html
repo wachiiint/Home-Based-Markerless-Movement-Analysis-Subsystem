@@ -44,6 +44,9 @@
           <label>Movement task<select name="task_type"><option value="knee_flexion">Knee flexion</option><option value="knee_extension">Knee extension</option><option value="hip_flexion">Hip flexion</option><option value="hip_extension">Hip extension</option><option value="ankle_dorsiflexion">Ankle dorsiflexion</option><option value="ankle_plantarflexion">Ankle plantarflexion</option></select></label>
           <label>Camera view<select name="view"><option value="lateral">Lateral</option><option value="frontal">Frontal</option></select></label>
         </div>
+        <label>Side performing the task <small class="hint">(the leg the patient was told to move)</small>
+          <select name="side"><option value="left">Left</option><option value="right">Right</option></select>
+        </label>
         <label>Calibrated device <small class="hint">(for metric 3D · resolution must match)</small>
           <select id="device-select"><option value="">Auto — 2D / uncalibrated</option></select>
         </label>
@@ -68,9 +71,19 @@
 
     <section id="metrics-section" class="panel metrics-panel" hidden>
       <div class="panel-heading"><div><p class="eyebrow">03 / ANALYSIS</p><h2>Movement summary</h2></div><span class="step">Decision support only</span></div>
+      <p id="side-notice" class="inline-notice warn" hidden></p>
       <p id="analysis-notice" class="inline-notice" hidden></p>
-      <div class="summary-grid"><div class="risk-card"><span class="metric-label">Screening risk <small class="hint">(worse leg)</small></span><strong id="risk-value">—</strong><small id="risk-flags">No flags</small></div><div><span class="metric-label">Confidence</span><strong id="confidence-value">—</strong></div><div><span class="metric-label">Sides analyzed</span><strong id="side-value">—</strong></div><div><span class="metric-label">Valid frame ratio</span><strong id="valid-value">—</strong></div></div>
+      <div class="summary-grid"><div class="risk-card"><span class="metric-label">Screening risk <small class="hint">(instructed leg)</small></span><strong id="risk-value">—</strong><small id="risk-flags">No flags</small></div><div><span class="metric-label">Confidence</span><strong id="confidence-value">—</strong></div><div><span class="metric-label">Instructed side</span><strong id="side-value">—</strong></div><div><span class="metric-label">Valid frame ratio</span><strong id="valid-value">—</strong></div></div>
       <div class="metric-compare" id="angle-metrics"></div>
+      <div class="export-block">
+        <div class="export-row">
+          <span class="metric-label">Export CSV <small class="hint">for reading</small></span>
+          <a id="export-assessment-csv" class="ghost-button" download hidden>Metrics <span>↓</span></a>
+          <a id="export-pose2d-csv" class="ghost-button" download hidden>2D keypoints <span>↓</span></a>
+          <a id="export-pose3d-csv" class="ghost-button" download hidden>3D skeleton <span>↓</span></a>
+        </div>
+        <small id="export-note" class="hint"></small>
+      </div>
       <p class="disclaimer">This local tool is for technical testing and decision support. It is not a clinical diagnosis.</p>
     </section>
 
