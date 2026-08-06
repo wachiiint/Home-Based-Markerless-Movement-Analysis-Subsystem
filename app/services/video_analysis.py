@@ -9,6 +9,7 @@ from app.core.config import Settings
 from app.models.keypoints import leg_indices
 from app.models.task_config import TASK_CONFIGS
 from app.schemas.movement import TaskType
+from app.schemas.response import AngleTrajectory
 from app.services.calibration.device_id import extract_capture_metadata
 from app.services.calibration.session import SessionCalibrator
 from app.services.calibration.transform import camera_to_floor_6dof
@@ -66,6 +67,11 @@ class LegAnalysis:
     valid_frame_ratio: float
     mean_confidence: float
     smoothness: dict
+    # The smoothed angle per *sampled* frame, ``None`` where the leg was not
+    # confidently visible. Full length and time-aligned with the sequence, so
+    # both legs plot against one time axis. This is what min/max/ROM were read
+    # from -- the graph and the numbers cannot disagree.
+    series: list[float | None]
     # Frames whose angle disagreed with its neighbours (usually a brief
     # left/right tracking swap) and was repaired before min/max/ROM.
     outlier_frames: int = 0
@@ -76,6 +82,9 @@ def _analyze_leg(sequence: PoseSequence, task_type: TaskType, side: str, setting
     the leg never has all three required joints confidently visible."""
     angles: list[float] = []
     confidences: list[float] = []
+    # Which sampled frame each angle came from, so the smoothed series can be
+    # scattered back onto the clip's timeline with gaps where it was unusable.
+    frame_slots: list[int] = []
     for pose in sequence.frames:
         if not pose.has_subject:
             continue
@@ -83,6 +92,7 @@ def _analyze_leg(sequence: PoseSequence, task_type: TaskType, side: str, setting
         if angle is not None:
             angles.append(angle)
             confidences.append(float(np.mean(pose.scores)))
+            frame_slots.append(pose.frame_index)
     if not angles:
         return None
     # Reject spikes BEFORE smoothing: the EMA would smear a bad frame across its
@@ -95,6 +105,9 @@ def _analyze_leg(sequence: PoseSequence, task_type: TaskType, side: str, setting
     )
     smoothed = exponential_moving_average(cleaned.values, settings.smoothing_alpha)
     min_angle, max_angle, rom = range_of_motion(smoothed)
+    series: list[float | None] = [None] * len(sequence.frames)
+    for slot, angle in zip(frame_slots, smoothed):
+        series[slot] = round(float(angle), 2)
     return LegAnalysis(
         side=side,
         min_angle=min_angle,
@@ -104,6 +117,7 @@ def _analyze_leg(sequence: PoseSequence, task_type: TaskType, side: str, setting
         valid_frame_ratio=len(angles) / processed_frames if processed_frames else 0.0,
         mean_confidence=float(np.mean(confidences)),
         smoothness=compute_smoothness(smoothed, settings.frame_sample_fps),
+        series=series,
         outlier_frames=cleaned.replaced_count,
     )
 
@@ -117,6 +131,23 @@ def _analyze_both_legs(sequence: PoseSequence, task_type: TaskType, settings: Se
         if leg is not None:
             legs[side] = leg
     return legs
+
+
+def _build_trajectory(legs: dict[str, LegAnalysis], task_type: TaskType, processed_frames: int, sampled_fps: int) -> AngleTrajectory:
+    """The per-frame angle series for the graph, on one shared time axis.
+
+    Time comes from the *sampled* rate, not the source fps: these are the frames
+    that were actually measured, and spacing them by the source fps would stretch
+    the movement across a timeline it was never read at.
+    """
+    config = TASK_CONFIGS[task_type]
+    return AngleTrajectory(
+        joint=config.max_key.replace("_max_deg", "_deg"),
+        time_sec=[round(index / sampled_fps, 3) for index in range(processed_frames)],
+        # A leg that was never usable is absent rather than a list of nulls.
+        left_angle_deg=legs["left"].series if "left" in legs else None,
+        right_angle_deg=legs["right"].series if "right" in legs else None,
+    )
 
 
 def _leg_participated(leg: LegAnalysis | None, task_type: TaskType) -> bool:
@@ -437,6 +468,7 @@ def analyze_video(input_path: Path, output_path: Path, task_type: TaskType, view
         guard_warnings=warnings + three_d.guard_warnings,
         smoothness=smoothness,
         symmetry_index_score=symmetry_score,
+        trajectory=_build_trajectory(legs, task_type, processed_frames, settings.frame_sample_fps),
     )
     pose_2d = None
     if want_pose_2d:

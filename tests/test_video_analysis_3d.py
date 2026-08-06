@@ -134,7 +134,7 @@ def _leg(side, rom, valid_frames=60, outliers=0):
     return LegAnalysis(
         side=side, min_angle=180.0 - rom, max_angle=180.0, rom=rom,
         valid_frames=valid_frames, valid_frame_ratio=1.0, mean_confidence=0.9,
-        smoothness={}, outlier_frames=outliers,
+        smoothness={}, series=[], outlier_frames=outliers,
     )
 
 

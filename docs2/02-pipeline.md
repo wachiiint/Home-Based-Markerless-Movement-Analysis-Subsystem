@@ -210,7 +210,7 @@ From the smoothed angle series:
 | ROM | Maximum minus minimum | ✅ |
 | Angular velocity and acceleration | Rate of change of the angle, and of that rate | ⚠️ |
 | Smoothness (LDLJ, SPARC, movement units) | Computed from the velocity and jerk of the series | ✅ |
-| Angle trajectory | The full per-frame series, kept for the graph rather than discarded | ⚠️ |
+| Angle trajectory | The full per-frame series, kept for the graph rather than discarded | ✅ |
 
 ## Stage 11 — Grade quality, and reject if too poor ✅ / ⚠️
 
@@ -233,11 +233,11 @@ diagnosis.
 |--------|----------|--------|
 | Result data | Metrics, quality grade, screening outcome, analysis mode | ✅ |
 | Annotated video | The original clip with the detected skeleton drawn on it | ✅ |
-| Angle graph | The angle trajectory, for plotting | ⚠️ |
+| Angle graph | The angle trajectory, plotted in the interface and downloadable as CSV | ✅ |
 | Motion simulation | 3D joint positions plus the muscle overlay | ✅ |
 | 2D keypoint sequence | Raw Halpe26 pixel coordinates and confidences per sampled frame, with skeleton edges | ✅ |
 
-**All four artifacts can be downloaded from the demo UI's `03 / ANALYSIS` panel.** They live in the
+**All five artifacts can be downloaded from the demo UI's `03 / ANALYSIS` panel.** They live in the
 session's temporary folder and are deleted on TTL expiry, so downloading is the only way to keep them.
 
 The three data artifacts come in **two formats, for two different jobs**:

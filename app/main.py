@@ -20,7 +20,7 @@ from app.services.calibration.charuco_calibrator import calibrate_device_from_im
 from app.services.calibration.device_id import derive_device_id
 from app.services.calibration.device_store import DeviceStore
 from app.services.calibration.print_verify import compute_print_scale
-from app.services.csv_export import assessment_csv, pose2d_csv, pose3d_csv
+from app.services.csv_export import assessment_csv, pose2d_csv, pose3d_csv, trajectory_csv
 from app.tools.calibrate_device import sample_video_frames
 from app.services.lifting.lifter import build_lifter
 from app.services.pose.pose_estimator import RtmlibAdapter
@@ -85,8 +85,25 @@ async def lifespan(app: FastAPI):
     yield
 
 
+class NoCacheStaticFiles(StaticFiles):
+    """Serve the browser assets with ``no-cache``, so they are revalidated.
+
+    Starlette sends an ETag but no ``Cache-Control``, which lets a browser reuse
+    a script from cache without asking. The page markup and ``app.js`` change
+    together, and a cached script paired with a fresh page looks for elements
+    that page does not have -- the interface then fails *after* a successful
+    analysis, which reads as "nothing happened". Revalidation is a 304 when
+    nothing changed, so this costs a round trip and no bandwidth.
+    """
+
+    def file_response(self, *args, **kwargs):
+        response = super().file_response(*args, **kwargs)
+        response.headers["Cache-Control"] = "no-cache"
+        return response
+
+
 app = FastAPI(title="RTMPose Movement Analysis Service", lifespan=lifespan)
-app.mount("/static", StaticFiles(directory=Path(__file__).parent / "static"), name="static")
+app.mount("/static", NoCacheStaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
 
 def _cleanup_demo_results() -> None:
@@ -181,14 +198,21 @@ async def assess_movement(
         raise
 
 
+# The pages are revalidated on every load rather than served from cache blind:
+# the markup and app.js change together, and a cached page paired with fresh
+# JavaScript is a broken interface (the script looks for elements the old page
+# does not have). Revalidation is a 304 when nothing changed, so it costs nothing.
+_NO_CACHE = {"Cache-Control": "no-cache"}
+
+
 @app.get("/", include_in_schema=False)
 async def demo_page():
-    return FileResponse(Path(__file__).parent / "static" / "index.html")
+    return FileResponse(Path(__file__).parent / "static" / "index.html", headers=_NO_CACHE)
 
 
 @app.get("/calibrate", include_in_schema=False)
 async def calibrate_page():
-    return FileResponse(Path(__file__).parent / "static" / "calibrate.html")
+    return FileResponse(Path(__file__).parent / "static" / "calibrate.html", headers=_NO_CACHE)
 
 
 @app.post("/api/demo/assess", response_model=DemoAssessmentResponse, include_in_schema=False)
@@ -239,6 +263,7 @@ async def demo_assess(
         annotated_video_url=f"{base}/annotated.mp4",
         assessment_url=f"{base}/assessment.json",
         assessment_csv_url=f"{base}/assessment.csv",
+        trajectory_csv_url=f"{base}/trajectory.csv" if result.trajectory is not None else None,
         pose_3d_url=pose_3d_url,
         pose_3d_csv_url=f"{base}/pose3d.csv" if pose_3d_url else None,
         pose_2d_url=pose_2d_url,
@@ -424,3 +449,9 @@ async def demo_result_pose3d_csv(session_id: str):
 @app.get("/api/demo/results/{session_id}/assessment.csv", include_in_schema=False)
 async def demo_result_assessment_csv(session_id: str):
     return _csv_response(session_id, "assessment.json", "assessment not found", assessment_csv, "assessment.csv")
+
+
+@app.get("/api/demo/results/{session_id}/trajectory.csv", include_in_schema=False)
+async def demo_result_trajectory_csv(session_id: str):
+    """The angle graph's data, derived from the same stored assessment."""
+    return _csv_response(session_id, "assessment.json", "assessment not found", trajectory_csv, "trajectory.csv")

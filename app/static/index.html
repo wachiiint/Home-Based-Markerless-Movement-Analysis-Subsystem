@@ -56,10 +56,21 @@
       <p id="analysis-notice" class="inline-notice" hidden></p>
       <div class="summary-grid"><div class="risk-card"><span class="metric-label">Screening risk <small class="hint">(instructed leg)</small></span><strong id="risk-value">—</strong><small id="risk-flags">No flags</small></div><div><span class="metric-label">Confidence</span><strong id="confidence-value">—</strong></div><div><span class="metric-label">Instructed side</span><strong id="side-value">—</strong></div><div><span class="metric-label">Valid frame ratio</span><strong id="valid-value">—</strong></div></div>
       <div class="metric-compare" id="angle-metrics"></div>
+
+      <div id="trajectory-block" class="trajectory-block" hidden>
+        <div class="trajectory-heading">
+          <span class="metric-label">Angle through time <small class="hint">(smoothed, per sampled frame)</small></span>
+          <span id="trajectory-legend" class="trajectory-legend"></span>
+        </div>
+        <div id="trajectory-chart" class="trajectory-chart"></div>
+        <small id="trajectory-readout" class="hint">Hover the graph to read the angle at a moment.</small>
+      </div>
+
       <div class="export-block">
         <div class="export-row">
           <span class="metric-label">Export CSV <small class="hint">for reading</small></span>
           <a id="export-assessment-csv" class="ghost-button" download hidden>Metrics <span>↓</span></a>
+          <a id="export-trajectory-csv" class="ghost-button" download hidden>Angle graph <span>↓</span></a>
           <a id="export-pose2d-csv" class="ghost-button" download hidden>2D keypoints <span>↓</span></a>
           <a id="export-pose3d-csv" class="ghost-button" download hidden>3D skeleton <span>↓</span></a>
         </div>

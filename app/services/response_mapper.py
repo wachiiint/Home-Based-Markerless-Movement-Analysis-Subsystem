@@ -4,6 +4,7 @@ from app.models.calibration import BoardDetectionDiagnostics
 from app.models.task_config import TASK_CONFIGS
 from app.schemas.movement import TaskType
 from app.schemas.response import (
+    AngleTrajectory,
     ClinicalMetrics,
     MovementAssessmentResponse,
     PoseQuality,
@@ -39,6 +40,7 @@ def build_assessment_response(
     guard_warnings: list[str] | None = None,
     smoothness: dict | None = None,
     symmetry_index_score: float | None = None,
+    trajectory: AngleTrajectory | None = None,
 ) -> MovementAssessmentResponse:
     config = TASK_CONFIGS[task_type]
     rom = round(angle_max - angle_min, 2)
@@ -77,6 +79,7 @@ def build_assessment_response(
                 occlusion_warning=valid_frame_ratio < 0.8, #TODO: Questionable ?
             ),
         ),
+        trajectory=trajectory,
         screening_result=ScreeningResult(
             risk_level=risk_level,  # type: ignore[arg-type]
             confidence_score=confidence_score,

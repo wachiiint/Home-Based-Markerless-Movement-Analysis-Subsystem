@@ -33,6 +33,27 @@
 .metrics-panel .panel-heading{margin-bottom:16px}
 .metrics-panel .summary-grid strong{font-size:20px}
 .metric-compare{margin-top:14px;max-height:340px;overflow:auto;border:1px solid #dfe7e2;border-radius:6px}
+/* Angle-through-time graph: plain SVG, scaled to the panel width */
+.trajectory-block{margin-top:18px}
+.trajectory-heading{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:baseline;gap:10px}
+.trajectory-heading .metric-label{margin-bottom:0}
+.trajectory-legend{display:flex;gap:14px;font-size:12px;color:#5a6b64}
+.legend-item{display:inline-flex;align-items:center;gap:6px}
+.legend-item i{width:16px;height:3px;border-radius:2px}
+.trajectory-chart{margin-top:8px;border:1px solid #dfe7e2;border-radius:6px;background:#fbfdfb;padding:6px 4px}
+.trajectory-svg{display:block;width:100%;height:auto;touch-action:none}
+.trajectory-svg .grid-line{stroke:#e7eeea;stroke-width:1}
+.trajectory-svg .axis-line{stroke:#cfdad4;stroke-width:1}
+.trajectory-svg .axis-text{fill:#8a988f;font-size:11px;font-variant-numeric:tabular-nums}
+.trajectory-svg .angle-line{fill:none;stroke-linejoin:round;stroke-linecap:round}
+.trajectory-svg .angle-line.is-instructed{stroke-width:2.4}
+.trajectory-svg .angle-line.is-reference{stroke-width:1.5;opacity:.6;stroke-dasharray:5 4}
+.trajectory-svg .cursor-line{stroke:#9fb3aa;stroke-width:1;stroke-dasharray:3 3}
+.trajectory-block>.hint{display:block;margin-top:8px;font-variant-numeric:tabular-nums}
+/* Narrow screens: the SVG scales with its container, so squeezing it to phone
+   width would shrink the axis labels to a few pixels. Keep it legible and let
+   the graph scroll sideways inside its own box instead. */
+@media(max-width:760px){.trajectory-chart{overflow-x:auto}.trajectory-svg{min-width:720px}}
 /* Export buttons: anchors styled as .ghost-button, so align them to that height */
 .export-block{margin-top:16px;padding-top:16px;border-top:1px solid #eef2ef}
 .export-row{display:flex;flex-wrap:wrap;align-items:center;gap:10px}

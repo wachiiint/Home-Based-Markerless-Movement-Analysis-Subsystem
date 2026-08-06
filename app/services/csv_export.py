@@ -92,9 +92,37 @@ def _flatten(value, prefix: str = "") -> list[tuple[str, object]]:
 
 
 def assessment_csv(assessment: dict) -> str:
-    """The assessment response as a flat metric/value table."""
+    """The assessment response as a flat metric/value table.
+
+    The angle trajectory is left out: flattened, it would bury the twenty-odd
+    metrics under hundreds of ``trajectory.left_angle_deg[n]`` rows. It has its
+    own per-frame table below, which is the shape a spreadsheet plots from.
+    """
     buffer, writer = _writer()
     writer.writerow(["metric", "value"])
-    for path, value in _flatten(assessment):
+    for path, value in _flatten({k: v for k, v in assessment.items() if k != "trajectory"}):
         writer.writerow([path, value])
+    return buffer.getvalue()
+
+
+def trajectory_csv(assessment: dict) -> str:
+    """The angle graph as a table: one row per sampled frame, one column per leg.
+
+    A frame with no usable angle keeps its row with an empty cell, so the gap
+    survives into a spreadsheet chart instead of being drawn through.
+    """
+    trajectory = assessment.get("trajectory") or {}
+    times = trajectory.get("time_sec") or []
+    joint = trajectory.get("joint") or "angle_deg"
+    sides = [(side, trajectory.get(f"{side}_angle_deg")) for side in ("left", "right")]
+    present = [(side, values) for side, values in sides if values is not None]
+
+    buffer, writer = _writer()
+    writer.writerow(["frame", "time_sec"] + [f"{side}_{joint}" for side, _ in present])
+    for index, time_sec in enumerate(times):
+        row: list = [index, time_sec]
+        for _, values in present:
+            value = values[index] if index < len(values) else None
+            row.append("" if value is None else value)
+        writer.writerow(row)
     return buffer.getvalue()

@@ -151,6 +151,12 @@ the system cannot check that the instructed leg is the one that actually moved.
 - `movement_smoothness` is `null` for a leg that did not move — smoothness of a stationary limb is
   meaningless, and reporting a number would invite misreading.
 - `trajectory` carries the full per-frame series for the graph. Roughly 60 to 150 values per side.
+  **Shipped today** on the current response, at the top level and in this shape:
+  `{ "joint": "knee_flexion_deg", "time_sec": [...], "left_angle_deg": [...], "right_angle_deg": [...] }`.
+  One entry per *sampled* frame, `null` where the leg was not confidently visible — the graph breaks
+  there rather than bridging a gap that was never measured — and a whole side is `null` when that leg
+  was never usable. The values are the smoothed ones that min/max/ROM were read from, so the graph
+  and the summary numbers cannot disagree.
 - `scale_source` is `bone_length`, `charuco_board`, or `null` when no scale was available. Angles
   remain valid with no scale.
 - `warnings` holds non-fatal notes, such as `declared_side_did_not_move_most`.
@@ -378,7 +384,7 @@ counts.
 | Confidence | `0.5 × frames + 0.5 × confidence` | `0.40 × frames + 0.40 × confidence + 0.20 × tracking stability` |
 | Symmetry | Ratio 0 to 1, inside the analysis response | Percentage, from its own comparison endpoint |
 | Naming | `knee_rom_deg` | `estimated_knee_rom_deg` |
-| Trajectories | Computed then discarded | Returned in `trajectory` |
+| Trajectories | Computed then discarded | Returned in `trajectory` — *already shipped on the current response* |
 | Velocity, acceleration | Absent | In `metrics` |
 | History | None | SQLite, enabling symmetry and progress |
 | Calibration board | Primary scale source | Optional; bone length is primary |

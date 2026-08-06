@@ -54,7 +54,7 @@ and a 3D motion simulation.
 - `app/utils/math_utils.py` — angle and vector helpers.
 - `app/static/` — browser interface. `index.html`/`app.js` is the analysis page (upload, results,
   3D viewer with muscle overlay); `calibrate.html`/`calibrate.js` is the separate `/calibrate` page.
-- `tests/` — 138 tests covering the API contract, kinematics, lifting, calibration, muscles, smoothness, symmetry, exports.
+- `tests/` — 149 tests covering the API contract, kinematics, lifting, calibration, muscles, smoothness, symmetry, trajectory, exports.
 
 ---
 
@@ -68,13 +68,18 @@ and a 3D motion simulation.
   which leg was instructed; **only that leg is screened**, the other is a contralateral reference.
   A mismatch between the declared side and the leg that actually moved is reported, never auto-corrected.
 - **Smoothness.** LDLJ, SPARC, and movement-unit count per side.
+- **Angle trajectory and its graph.** The response carries a top-level `trajectory` — the smoothed
+  angle per sampled frame for both legs on one time axis, `null` where a leg was not confidently
+  visible. It is the same series min/max/ROM were read from, so the graph and the numbers agree. The
+  demo UI plots it as inline SVG (no chart library) with a hover readout, and offers it as its own
+  per-frame CSV; the metrics CSV deliberately leaves it out.
 - **Symmetry.** Implemented, but scoped to a single clip — which is the wrong basis. Being rebuilt as a cross-recording comparison in P4.
 - **Optional 3D.** MotionBERT ONNX lift, 3D hip and knee angles, metric scale, camera-to-floor transform. Best-effort: any failure falls back to 2D and reports the mode. **Frequently falls back in practice.**
 - **Optional ChArUco calibration.** Per-device intrinsics and per-session floor plane. Runs from its
   own UI page at `/calibrate` (or the `calibrate_device` CLI), not from the analysis page. Being demoted to optional in P2 — bone length replaces it as the scale source.
 - **Muscle overlay.** Five muscle groups per leg on the 3D skeleton, coloured by a kinematic length proxy. Display only — never force or activation.
-- **Artifact export from the demo UI.** The `03 / ANALYSIS` panel offers the assessment metrics, the raw
-  2D keypoint sequence (Halpe26 pixel coords, scores, skeleton edges, plus the settings needed to replay
+- **Artifact export from the demo UI.** The `03 / ANALYSIS` panel offers the assessment metrics, the
+  plotted angle series, the raw 2D keypoint sequence (Halpe26 pixel coords, scores, skeleton edges, plus the settings needed to replay
   the run), and the 3D skeleton — each as **CSV**, the format a person opens and reads. The complete
   JSON record is still written and served, but its URL travels in the response instead of getting a
   button. CSV is a lossy view generated per request from the stored JSON (`csv_export.py`); it drops
@@ -82,7 +87,7 @@ and a 3D motion simulation.
   **Re-importing a saved file is not built** — export only.
 - **FAKE_MODE.** Contract-shaped response without inference; used by tests.
 
-**Not built:** bone-length input and scale, angle trajectories in the response, angular velocity and
+**Not built:** bone-length input and scale, angular velocity and
 acceleration, the hard-reject quality guard, `tracking_stability_score`, session storage, and the
 comparison endpoints. All scheduled in `docs2/04-planning.md`.
 

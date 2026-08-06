@@ -22,7 +22,8 @@ for one person. Risk is the chance it takes longer than estimated or breaks some
 | Symmetry | ⚠️ Implemented but wrongly scoped — rebuilt in P4 |
 | ChArUco board calibration | ✅ Built, being demoted to optional |
 | Quality **rejection** | ❌ Flags only, does not reject |
-| Bone-length scale, trajectories, velocity, storage, comparisons | ❌ Not built |
+| Angle trajectory in the response, and the graph in the interface | ✅ Built |
+| Bone-length scale, velocity, storage, comparisons | ❌ Not built |
 
 **The honest summary:** the measurement core works. What is missing is the safety guard, the
 patient-specific scaling that makes 3D trustworthy, and everything that needs memory between
@@ -84,9 +85,11 @@ position lower it, even when each individual frame looks confident.
 The highest value per day in the whole plan. The per-frame angles are already computed and then
 thrown away; keeping them unlocks the graph, velocity, and later the progress comparison.
 
-- [ ] **Return the angle trajectory in the response** — 1 d · low · the movement itself, not just its extremes
+- [x] **Return the angle trajectory in the response** — the movement itself, not just its extremes.
+      Top-level `trajectory`, one entry per sampled frame, `null` for frames the tracker could not read.
 - [ ] **Compute angular velocity and acceleration** — 1 d · low · shows hesitancy that ROM alone hides
-- [ ] **Draw the trajectory graph in the interface** — 3 d · low · the most visible improvement a clinician sees
+- [x] **Draw the trajectory graph in the interface** — plain SVG in `03 / ANALYSIS`, both legs on one
+      time axis with the instructed leg emphasised, plus a per-frame CSV of the plotted series
 - [ ] **Add `estimated_step_length_ratio`** — 0.5 d · low · advisor's specification; needs no calibration at all
 
 ---

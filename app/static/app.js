@@ -139,6 +139,174 @@ function renderComparison(metrics) {
   return `<table class="compare-table"><thead><tr><th>Metric</th><th>Left</th><th>Right</th></tr></thead><tbody>${body}${symmetryRow}</tbody></table>`;
 }
 
+// ---- Angle graph (03 / ANALYSIS) -----------------------------------------
+// The ROM number says how far the leg travelled; this says how it travelled --
+// hesitation, tremor, a second attempt. Drawn as plain SVG: one chart is not
+// worth a plotting library, and the page has no build step.
+const trajectoryBlock = document.querySelector('#trajectory-block');
+const trajectoryChart = document.querySelector('#trajectory-chart');
+const trajectoryLegend = document.querySelector('#trajectory-legend');
+const trajectoryReadout = document.querySelector('#trajectory-readout');
+
+// Viewbox units, not pixels: the SVG is scaled to the panel width. The wide
+// aspect keeps the graph from towering over the table it sits under, and keeps
+// the axis text near its nominal size once scaled.
+const CHART = { w: 1000, h: 280, left: 56, right: 18, top: 18, bottom: 36 };
+const SIDE_COLOR = { left: '#16764f', right: '#2f6fb9' };
+
+// Round the angle axis outwards to a readable step, so the gridline labels are
+// whole numbers rather than whatever the extremes happened to be.
+function niceAxis(min, max) {
+  const span = Math.max(max - min, 5);
+  const step = [1, 2, 5, 10, 20, 25, 50].find((s) => span / s <= 6) || 100;
+  return { lo: Math.floor(min / step) * step, hi: Math.ceil(max / step) * step, step };
+}
+
+// A null means the leg was not confidently visible in that frame. The line
+// breaks there instead of bridging the gap, which would draw movement that was
+// never measured.
+function segments(values, toX, toY) {
+  const paths = [];
+  let current = [];
+  values.forEach((value, index) => {
+    if (value == null) {
+      if (current.length > 1) paths.push(current);
+      current = [];
+      return;
+    }
+    current.push(`${toX(index).toFixed(1)},${toY(value).toFixed(1)}`);
+  });
+  if (current.length > 1) paths.push(current);
+  return paths;
+}
+
+// The graph is an extra reading of numbers the panel already shows, so it must
+// never be able to hide them: anything it throws (a stale cached page without
+// the chart markup, a shape we did not expect) costs the graph, not the result.
+function renderTrajectory(assessment) {
+  try {
+    drawTrajectory(assessment);
+  } catch (error) {
+    console.error('angle graph failed to draw', error);
+    if (trajectoryBlock) trajectoryBlock.hidden = true;
+  }
+}
+
+function drawTrajectory(assessment) {
+  if (!trajectoryBlock || !trajectoryChart) return;
+  const trajectory = assessment.trajectory;
+  const time = trajectory?.time_sec || [];
+  const series = ['left', 'right']
+    .map((side) => ({ side, values: trajectory?.[`${side}_angle_deg`] }))
+    .filter((s) => Array.isArray(s.values));
+  if (!time.length || !series.length) {
+    trajectoryBlock.hidden = true;
+    return;
+  }
+  trajectoryBlock.hidden = false;
+
+  const instructed = assessment.video_metadata.analyzed_side;
+  const finite = series.flatMap((s) => s.values.filter((v) => v != null));
+  const axis = niceAxis(Math.min(...finite), Math.max(...finite));
+  const { w, h, left, right, top, bottom } = CHART;
+  const plotW = w - left - right;
+  const plotH = h - top - bottom;
+  const lastTime = time[time.length - 1] || 1;
+  const toX = (index) => left + (time[index] / lastTime) * plotW;
+  const toY = (angle) => top + (1 - (angle - axis.lo) / (axis.hi - axis.lo)) * plotH;
+
+  let grid = '';
+  for (let angle = axis.lo; angle <= axis.hi + 1e-9; angle += axis.step) {
+    const y = toY(angle).toFixed(1);
+    grid += `<line class="grid-line" x1="${left}" x2="${w - right}" y1="${y}" y2="${y}"></line>`;
+    grid += `<text class="axis-text" x="${left - 8}" y="${y}" text-anchor="end" dominant-baseline="middle">${angle}°</text>`;
+  }
+  // ~8 time labels regardless of clip length.
+  const tickEvery = Math.max(1, Math.round(time.length / 8));
+  let ticks = '';
+  for (let index = 0; index < time.length; index += tickEvery) {
+    ticks += `<text class="axis-text" x="${toX(index).toFixed(1)}" y="${h - bottom + 18}" text-anchor="middle">${time[index].toFixed(1)}s</text>`;
+  }
+
+  const lines = series
+    .map(({ side, values }) => {
+      const emphasis = side === instructed ? 'is-instructed' : 'is-reference';
+      return segments(values, toX, toY)
+        .map((points) => `<polyline class="angle-line ${emphasis}" stroke="${SIDE_COLOR[side]}" points="${points.join(' ')}"></polyline>`)
+        .join('');
+    })
+    .join('');
+
+  const cursors = series
+    .map(({ side }) => `<circle class="cursor-dot" data-side="${side}" r="4" fill="${SIDE_COLOR[side]}" cx="-99" cy="-99"></circle>`)
+    .join('');
+
+  trajectoryChart.innerHTML = `
+    <svg viewBox="0 0 ${w} ${h}" class="trajectory-svg" role="img" aria-label="Joint angle through time">
+      ${grid}${ticks}
+      <line class="axis-line" x1="${left}" x2="${left}" y1="${top}" y2="${h - bottom}"></line>
+      <line class="axis-line" x1="${left}" x2="${w - right}" y1="${h - bottom}" y2="${h - bottom}"></line>
+      ${lines}
+      <line class="cursor-line" x1="-99" x2="-99" y1="${top}" y2="${h - bottom}"></line>
+      ${cursors}
+      <rect class="hover-area" x="${left}" y="${top}" width="${plotW}" height="${plotH}" fill="transparent"></rect>
+    </svg>`;
+
+  trajectoryLegend.innerHTML = series
+    .map(({ side }) => {
+      const note = side === instructed ? ' (instructed)' : '';
+      return `<span class="legend-item"><i style="background:${SIDE_COLOR[side]}"></i>${label(side)}${note}</span>`;
+    })
+    .join('');
+
+  attachTrajectoryHover(series, time, toX, toY, trajectory.joint);
+}
+
+// Reading a single moment off the graph is what turns a shape into a number, so
+// the hover reports the angle of every plotted leg at the frame under the cursor.
+function attachTrajectoryHover(series, time, toX, toY, joint) {
+  const svg = trajectoryChart.querySelector('svg');
+  const cursorLine = svg.querySelector('.cursor-line');
+  const dots = [...svg.querySelectorAll('.cursor-dot')];
+  const idle = 'Hover the graph to read the angle at a moment.';
+  const jointLabel = label(joint.replace(/_deg$/, ''));
+
+  const clear = () => {
+    cursorLine.setAttribute('x1', -99);
+    cursorLine.setAttribute('x2', -99);
+    for (const dot of dots) dot.setAttribute('cx', -99);
+    trajectoryReadout.textContent = idle;
+  };
+
+  svg.addEventListener('pointerleave', clear);
+  svg.addEventListener('pointermove', (event) => {
+    // Map the pointer through the viewBox: the SVG is scaled to the panel width,
+    // so client pixels are not chart units.
+    const box = svg.getBoundingClientRect();
+    const x = ((event.clientX - box.left) / box.width) * CHART.w;
+    let index = 0;
+    for (let i = 1; i < time.length; i += 1) {
+      if (Math.abs(toX(i) - x) < Math.abs(toX(index) - x)) index = i;
+    }
+    const cx = toX(index).toFixed(1);
+    cursorLine.setAttribute('x1', cx);
+    cursorLine.setAttribute('x2', cx);
+    const parts = [];
+    for (const dot of dots) {
+      const value = series.find((s) => s.side === dot.dataset.side).values[index];
+      if (value == null) {
+        dot.setAttribute('cx', -99);
+        parts.push(`${label(dot.dataset.side)} — not tracked`);
+        continue;
+      }
+      dot.setAttribute('cx', cx);
+      dot.setAttribute('cy', toY(value).toFixed(1));
+      parts.push(`${label(dot.dataset.side)} ${value.toFixed(1)}°`);
+    }
+    trajectoryReadout.textContent = `${time[index].toFixed(1)}s · ${jointLabel} · ${parts.join(' · ')}`;
+  });
+}
+
 // Warnings about the declared side are a data-entry / recording problem, not a
 // 3D-pipeline problem, so they get their own notice above the analysis one.
 const SIDE_WARNINGS = {
@@ -205,6 +373,7 @@ const exportNote = document.querySelector('#export-note');
 // [anchor id, response field, download suffix]
 const EXPORT_TARGETS = [
   ['export-assessment-csv', 'assessment_csv_url', 'metrics.csv'],
+  ['export-trajectory-csv', 'trajectory_csv_url', 'trajectory.csv'],
   ['export-pose2d-csv', 'pose_2d_csv_url', 'pose2d.csv'],
   ['export-pose3d-csv', 'pose_3d_csv_url', 'pose3d.csv'],
 ];
@@ -212,7 +381,9 @@ const EXPORT_TARGETS = [
 function renderExports(payload) {
   const sessionId = payload.assessment.session_id;
   for (const [id, field, suffix] of EXPORT_TARGETS) {
+    // A cached page from before this button existed has no anchor to fill in.
     const anchor = document.querySelector('#' + id);
+    if (!anchor) continue;
     const href = payload[field];
     anchor.hidden = !href;
     if (!href) {
@@ -223,9 +394,11 @@ function renderExports(payload) {
     anchor.download = `${sessionId}-${suffix}`;
   }
 
+  if (!exportNote) return;
   const notes = [];
   if (!payload.pose_3d_csv_url) notes.push('3D skeleton unavailable — the lifter is off or the lift failed.');
   if (!payload.pose_2d_csv_url) notes.push('2D keypoints unavailable for this run.');
+  notes.push('The angle graph CSV is the plotted series itself, one row per sampled frame — the metrics CSV leaves it out to stay readable.');
   notes.push('CSV is one row per frame, for reading — it drops the skeleton bone list and the settings needed to reproduce the run, which only the JSON response carries.');
   notes.push(`Files expire at ${new Date(payload.expires_at).toLocaleTimeString()}.`);
   exportNote.textContent = notes.join(' ');
@@ -381,10 +554,13 @@ form.addEventListener('submit', async (event) => {
     document.querySelector('#side-value').textContent = assessment.video_metadata.analyzed_side || '—';
     document.querySelector('#valid-value').textContent = percent(quality.valid_frame_ratio);
     document.querySelector('#angle-metrics').innerHTML = renderComparison(assessment.clinical_metrics);
+    // Show the numbers first: everything below is an extra view of a result the
+    // panel already holds, and none of it is worth withholding the result for.
+    metricsSection.hidden = false;
+    renderTrajectory(assessment);
     renderSideNotice(assessment);
     renderAnalysisNotice(assessment);
     renderExports(payload);
-    metricsSection.hidden = false;
     await showPose3d(payload.pose_3d_url);
   } catch (error) {
     resultState.textContent = 'Unable to analyze';

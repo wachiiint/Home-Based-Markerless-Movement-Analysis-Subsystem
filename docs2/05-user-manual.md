@@ -356,6 +356,12 @@ The graph shows the angle through time — the shape of the movement, which a si
 - **Flattening at the top:** the patient reached a limit and stopped.
 - **Each repetition smaller than the last:** fatigue, which is itself a clinical finding.
 
+Both legs are drawn on one time axis: the instructed leg as a solid line, the other as a faint dashed
+one for comparison. Hovering reads out the angle of each leg at that moment. A **break in a line**
+means the leg was not clearly visible in those frames — nothing is drawn across a gap, because that
+part of the movement was never measured. The same series can be downloaded as a CSV, one row per
+sampled frame, from the export row below the graph.
+
 ### 6. Understand the risk level
 
 | Level | Meaning |

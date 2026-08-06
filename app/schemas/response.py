@@ -35,6 +35,23 @@ class ClinicalMetrics(BaseModel):
     pose_quality: PoseQuality
 
 
+class AngleTrajectory(BaseModel):
+    """The smoothed 2D joint angle through time -- the movement itself, rather
+    than only its extremes.
+
+    One entry per **sampled** frame, so the two legs and the time axis stay
+    aligned. A frame whose joints were not confidently visible keeps its slot
+    with ``null``: a gap in the graph is the honest picture, an interpolated
+    value would invent movement that was never seen.
+    """
+
+    # Angle name without the side prefix, e.g. "estimated_knee_angle_deg".
+    joint: str
+    time_sec: list[float]
+    left_angle_deg: list[float | None] | None = None
+    right_angle_deg: list[float | None] | None = None
+
+
 class ScreeningResult(BaseModel):
     risk_level: Literal["low", "moderate", "high"]
     confidence_score: float = Field(ge=0, le=1)
@@ -55,6 +72,10 @@ class MovementAssessmentResponse(BaseModel):
     video_metadata: VideoMetadata
     clinical_metrics: ClinicalMetrics
     screening_result: ScreeningResult
+    # Kept beside the summary metrics rather than inside them: it is the raw
+    # movement for plotting, not a clinical figure. None when no angle series
+    # was produced (the fake-mode response).
+    trajectory: AngleTrajectory | None = None
     transformation_matrix_6dof: TransformationMatrix6DoF | None = None
     analysis_mode: Literal["2d", "3d"] = "2d"
     board_diagnostics: BoardDetectionDiagnostics | None = None
@@ -76,6 +97,9 @@ class DemoAssessmentResponse(BaseModel):
     # topology and the replay settings. Nulls mean that run produced no 3D/2D.
     assessment_url: str
     assessment_csv_url: str
+    # The angle graph as a spreadsheet: one row per sampled frame. Null when the
+    # run produced no trajectory.
+    trajectory_csv_url: str | None = None
     # pose_3d_url is also what the 3D viewer fetches to render.
     pose_3d_url: str | None = None
     pose_3d_csv_url: str | None = None
