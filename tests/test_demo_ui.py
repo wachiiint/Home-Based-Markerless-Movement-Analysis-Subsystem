@@ -25,6 +25,19 @@ def test_demo_page_offers_every_export_as_csv(monkeypatch):
         assert f'id="export-{artifact}"' not in response.text
 
 
+def test_calibration_lives_on_its_own_page(monkeypatch):
+    """Calibration is a once-per-device chore, so it is off the analysis page."""
+    monkeypatch.setenv("FAKE_MODE", "true")
+    get_settings.cache_clear()
+    with TestClient(app) as client:
+        analysis = client.get("/")
+        calibrate = client.get("/calibrate")
+    assert 'id="calibrate-form"' not in analysis.text
+    assert 'href="/calibrate"' in analysis.text
+    assert calibrate.status_code == 200
+    assert 'id="calibrate-form"' in calibrate.text
+
+
 def test_pose2d_download_404s_for_unknown_session(monkeypatch):
     monkeypatch.setenv("FAKE_MODE", "true")
     get_settings.cache_clear()

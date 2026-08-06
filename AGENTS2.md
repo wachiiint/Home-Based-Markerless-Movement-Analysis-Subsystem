@@ -52,7 +52,8 @@ and a 3D motion simulation.
 - `app/models/` — Halpe26 keypoint constants, task configuration, calibration models.
 - `app/tools/` — CLIs: `generate_board`, `calibrate_device`, `extract_gait2392_muscles`.
 - `app/utils/math_utils.py` — angle and vector helpers.
-- `app/static/` — browser interface (upload, results, 3D viewer with muscle overlay).
+- `app/static/` — browser interface. `index.html`/`app.js` is the analysis page (upload, results,
+  3D viewer with muscle overlay); `calibrate.html`/`calibrate.js` is the separate `/calibrate` page.
 - `tests/` — 138 tests covering the API contract, kinematics, lifting, calibration, muscles, smoothness, symmetry, exports.
 
 ---
@@ -69,7 +70,8 @@ and a 3D motion simulation.
 - **Smoothness.** LDLJ, SPARC, and movement-unit count per side.
 - **Symmetry.** Implemented, but scoped to a single clip — which is the wrong basis. Being rebuilt as a cross-recording comparison in P4.
 - **Optional 3D.** MotionBERT ONNX lift, 3D hip and knee angles, metric scale, camera-to-floor transform. Best-effort: any failure falls back to 2D and reports the mode. **Frequently falls back in practice.**
-- **Optional ChArUco calibration.** Per-device intrinsics and per-session floor plane. Being demoted to optional in P2 — bone length replaces it as the scale source.
+- **Optional ChArUco calibration.** Per-device intrinsics and per-session floor plane. Runs from its
+  own UI page at `/calibrate` (or the `calibrate_device` CLI), not from the analysis page. Being demoted to optional in P2 — bone length replaces it as the scale source.
 - **Muscle overlay.** Five muscle groups per leg on the 3D skeleton, coloured by a kinematic length proxy. Display only — never force or activation.
 - **Artifact export from the demo UI.** The `03 / ANALYSIS` panel offers the assessment metrics, the raw
   2D keypoint sequence (Halpe26 pixel coords, scores, skeleton edges, plus the settings needed to replay

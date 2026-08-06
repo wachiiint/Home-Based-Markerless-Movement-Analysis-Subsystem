@@ -11,30 +11,11 @@
     <header class="topbar">
       <div><p class="eyebrow">LOCAL MOVEMENT ANALYSIS</p><h1>RTMPose Movement Lab</h1></div>
       <div class="topbar-actions">
+        <a class="ghost-button link-button" href="/calibrate">Calibrate camera →</a>
         <button id="preview-3d" class="ghost-button" type="button">Preview 3D (sample data)</button>
         <span class="status-dot"><i></i> Ready for test</span>
       </div>
     </header>
-
-    <section class="panel calibrate-panel">
-      <div class="panel-heading"><div><p class="eyebrow">00 / CALIBRATION</p><h2>Calibrate camera</h2></div><span class="step">Optional · for metric 3D</span></div>
-      <p class="calibrate-intro">Upload a short video of the printed ChArUco board held at several angles. Do this once per device + resolution to unlock metric (millimetre) 3D. Analysis still runs in 2D without it.</p>
-      <form id="calibrate-form" class="calibrate-form">
-        <div class="two-col">
-          <label>Camera make<input name="make" placeholder="e.g. Apple"></label>
-          <label>Camera model<input name="model" placeholder="e.g. iPhone 13"></label>
-        </div>
-        <div class="three-col">
-          <label>Measured 100 mm bar (mm)<input name="measured_bar_mm" type="number" step="0.1" min="1" value="100"></label>
-          <label>Square size (mm)<input name="square_length_mm" type="number" step="0.1" min="1" value="25"></label>
-          <label>ArUco marker size (mm)<input name="marker_length_mm" type="number" step="0.1" min="1" value="18"></label>
-        </div>
-        <label class="dropzone" for="calib-file"><span class="upload-icon">↑</span><strong id="calib-file-name">Choose board video</strong><small>Board at several angles · 1080p recommended</small><input id="calib-file" name="file" type="file" accept="video/mp4,video/quicktime,video/x-msvideo" required></label>
-        <button id="calibrate-button" class="primary-button" type="submit"><span>Calibrate device</span><span class="button-arrow">→</span></button>
-        <p id="calibrate-message" class="message" role="alert"></p>
-        <div id="calibrate-result" class="calibrate-result" hidden></div>
-      </form>
-    </section>
 
     <section class="workspace">
       <form id="analysis-form" class="panel form-panel">
@@ -47,7 +28,7 @@
         <label>Side performing the task <small class="hint">(the leg the patient was told to move)</small>
           <select name="side"><option value="left">Left</option><option value="right">Right</option></select>
         </label>
-        <label>Calibrated device <small class="hint">(for metric 3D · resolution must match)</small>
+        <label>Calibrated device <small class="hint">(for metric 3D · resolution must match · <a href="/calibrate">add one</a>)</small>
           <select id="device-select"><option value="">Auto — 2D / uncalibrated</option></select>
         </label>
         <input type="hidden" name="device_make" id="device-make">

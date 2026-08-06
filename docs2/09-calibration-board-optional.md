@@ -70,6 +70,8 @@ uv run python -m app.tools.calibrate_device `
 - Success prints the reproj RMS (aim for **< 1 px**) and writes the record to
   `CALIBRATION_DATA_DIR` (default `data/calibration/`, gitignored).
 - `--images "shots/*.jpg"` works instead of `--video` if you shot stills.
+- In the browser, the same job lives on its own page at **`/calibrate`** (linked
+  from the analysis page's top bar). It also lists the devices already saved.
 
 > **Disable EIS / optical stabilisation and any digital zoom** before both
 > calibration and patient recording. They silently change the effective focal

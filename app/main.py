@@ -186,6 +186,11 @@ async def demo_page():
     return FileResponse(Path(__file__).parent / "static" / "index.html")
 
 
+@app.get("/calibrate", include_in_schema=False)
+async def calibrate_page():
+    return FileResponse(Path(__file__).parent / "static" / "calibrate.html")
+
+
 @app.post("/api/demo/assess", response_model=DemoAssessmentResponse, include_in_schema=False)
 async def demo_assess(
     patient_id: str = Form(...),

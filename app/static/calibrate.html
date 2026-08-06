@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Calibrate camera · RTMPose Movement Lab</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div><p class="eyebrow">00 / CALIBRATION</p><h1>Calibrate camera</h1></div>
+      <div class="topbar-actions">
+        <a class="ghost-button link-button" href="/">← Back to analysis</a>
+      </div>
+    </header>
+
+    <section class="workspace calibrate-workspace">
+      <section class="panel calibrate-panel">
+        <div class="panel-heading"><div><p class="eyebrow">BOARD VIDEO</p><h2>Upload ChArUco clip</h2></div><span class="step">Optional · for metric 3D</span></div>
+        <p class="calibrate-intro">Upload a short video of the printed ChArUco board held at several angles. Do this once per device + resolution to unlock metric (millimetre) 3D. Analysis still runs in 2D without it.</p>
+        <form id="calibrate-form" class="calibrate-form">
+          <div class="two-col">
+            <label>Camera make<input name="make" placeholder="e.g. Apple"></label>
+            <label>Camera model<input name="model" placeholder="e.g. iPhone 13"></label>
+          </div>
+          <div class="three-col">
+            <label>Measured 100 mm bar (mm)<input name="measured_bar_mm" type="number" step="0.1" min="1" value="100"></label>
+            <label>Square size (mm)<input name="square_length_mm" type="number" step="0.1" min="1" value="25"></label>
+            <label>ArUco marker size (mm)<input name="marker_length_mm" type="number" step="0.1" min="1" value="18"></label>
+          </div>
+          <label class="dropzone" for="calib-file"><span class="upload-icon">↑</span><strong id="calib-file-name">Choose board video</strong><small>Board at several angles · 1080p recommended</small><input id="calib-file" name="file" type="file" accept="video/mp4,video/quicktime,video/x-msvideo" required></label>
+          <button id="calibrate-button" class="primary-button" type="submit"><span>Calibrate device</span><span class="button-arrow">→</span></button>
+          <p id="calibrate-message" class="message" role="alert"></p>
+          <div id="calibrate-result" class="calibrate-result" hidden></div>
+        </form>
+      </section>
+
+      <section class="panel">
+        <div class="panel-heading"><div><p class="eyebrow">SAVED</p><h2>Calibrated devices</h2></div><span id="device-count" class="step">—</span></div>
+        <div id="device-list" class="device-list"></div>
+        <p class="disclaimer">A calibration is keyed on device <em>and</em> resolution. Record the patient clip at the same resolution, or the run falls back to 2D.</p>
+      </section>
+    </section>
+  </main>
+  <script type="module" src="/static/calibrate.js"></script>
+</body>
+</html>

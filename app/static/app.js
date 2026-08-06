@@ -92,57 +92,8 @@ sourceVideo.addEventListener('loadedmetadata', () => {
 
 loadDevices();
 
-// ---- Camera calibration (00 / CALIBRATION) --------------------------------
-const calibrateForm = document.querySelector('#calibrate-form');
-const calibFileInput = document.querySelector('#calib-file');
-const calibFileName = document.querySelector('#calib-file-name');
-const calibrateButton = document.querySelector('#calibrate-button');
-const calibrateMessage = document.querySelector('#calibrate-message');
-const calibrateResult = document.querySelector('#calibrate-result');
-
-calibFileInput.addEventListener('change', () => {
-  const file = calibFileInput.files[0];
-  if (file) calibFileName.textContent = file.name;
-});
-
-calibrateForm.addEventListener('submit', async (event) => {
-  event.preventDefault();
-  calibrateButton.disabled = true;
-  calibrateButton.querySelector('span').textContent = 'Calibrating…';
-  calibrateMessage.textContent = '';
-  calibrateResult.hidden = true;
-  try {
-    const response = await fetch('/api/demo/calibrate', { method: 'POST', body: new FormData(calibrateForm) });
-    const payload = await response.json();
-    if (!response.ok) throw new Error(payload.detail || 'Calibration failed');
-    const warnings = (payload.warnings || []).map((w) => `<li>${w}</li>`).join('');
-    const rows = [
-      ['Status', payload.ok ? 'Calibrated ✓' : `Failed (${payload.status})`],
-      ['Device ID', payload.device_id],
-      ['Metadata source', payload.source],
-      ['Resolution', payload.image_size ? `${payload.image_size[0]}×${payload.image_size[1]}` : '—'],
-      ['Frames sampled', payload.frames_sampled],
-    ];
-    if (payload.ok) {
-      rows.push(['Reprojection error', `${payload.reproj_error_px} px`]);
-      rows.push(['Print scale factor', payload.print_scale_factor]);
-    }
-    calibrateResult.className = `calibrate-result ${payload.ok ? 'ok' : 'fail'}`;
-    calibrateResult.innerHTML =
-      `<p class="calibrate-result-msg">${payload.message || ''}</p>` +
-      '<div class="metric-table">' +
-      rows.map(([k, v]) => `<div class="metric-cell"><span class="metric-label">${k}</span><strong>${v}</strong></div>`).join('') +
-      '</div>' +
-      (warnings ? `<ul class="calibrate-warnings">${warnings}</ul>` : '');
-    calibrateResult.hidden = false;
-    if (payload.ok) await loadDevices();  // surface the new device in the 01/INPUT picker
-  } catch (error) {
-    calibrateMessage.textContent = error.message;
-  } finally {
-    calibrateButton.disabled = false;
-    calibrateButton.querySelector('span').textContent = 'Calibrate device';
-  }
-});
+// Calibration lives on its own page (/calibrate, calibrate.js). New devices show
+// up in the picker above on the next load of this page.
 
 const percent = (value) => `${(Number(value) * 100).toFixed(0)}%`;
 const label = (key) => key.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
