@@ -221,19 +221,3 @@ adds them — see [04-planning.md](04-planning.md).
 |--------------|----------------|
 | Export and re-import of results | A saved result file can be opened again from the interface. Backing up history means copying the `data/sessions/` folder |
 | Bone-length patient records (prototype phase) | Each patient's measurements are entered once through the interface before metric 3D works for them. Until then the ChArUco board provides scale |
-
----
-
-## Related documents
-
-| Document | Purpose |
-|----------|---------|
-| [00-glossary.md](00-glossary.md) | Definitions of every term used |
-| [01-specification.md](01-specification.md) | What the project is and why |
-| [02-pipeline.md](02-pipeline.md) | Patient workflow and the technical data pipeline |
-| [03-api-contract.md](03-api-contract.md) | Request and response formats |
-| [04-planning.md](04-planning.md) | Phases, tasks, risk, effort, benefit |
-| [05-user-manual.md](05-user-manual.md) | How to perform, record, and interpret each task |
-| **06-setup.md** | *This document* |
-| [07-evaluation-and-limitations.md](07-evaluation-and-limitations.md) | Accuracy, validation, and honest limits |
-| [08-spec-alignment.md](08-spec-alignment.md) | Status against the advisor's specification |

@@ -86,7 +86,7 @@ In plain terms, the system does this:
 A few measures cannot come from one recording alone. Comparing the left leg against the right, or
 comparing today against an earlier visit, needs two recordings. These are handled as a separate
 question asked after the recordings exist, rather than as part of analysing any single one —
-described in Section 7.6.
+described in Section 7.5.
 
 The guiding stance is **decision support, not diagnosis**. Every number carries an explicit
 uncertainty, and any quantity the camera infers rather than measures is labelled as *estimated*.
@@ -141,14 +141,11 @@ is a visualisation of how muscles stretch and shorten as the limb moves, not a m
 it later is a genuine possibility and the architecture should not block it, but it is **out of scope
 for this project round** and nothing here depends on it.
 
-**No replacement for the clinical stopwatch tests.** The screening tests described in Section 4
-(5-STS, gait speed, TUG) are timed with a stopwatch and answer a different question from this system.
-They ask *how long did the patient take* — a single number summarising whole-body function, validated
-over decades against real patient outcomes, and used directly in diagnostic criteria. This system
-asks *how did the body move* — the angles, speed, and smoothness underlying that time. The two are
-complementary: a stopwatch tells a clinician that a patient is slow, while this system can show that
-the slowness comes from a restricted right knee. This project does not compute those timed tests, and
-a result from this system must never be presented as if it were one.
+**No replacement for the clinical stopwatch tests.** The timed screening tests (5-STS, gait speed,
+TUG) ask *how long did the patient take*; this system asks *how did the body move* while doing it.
+The two are complementary — a stopwatch says a patient is slow, this system can show the slowness
+comes from a restricted right knee — but this project does not compute the timed tests, and a result
+from it must never be presented as if it were one.
 
 **Not a general-purpose motion capture system.** Scope is lower-limb assessment tasks.
 
@@ -371,23 +368,7 @@ measurement core stays independently testable. Optional capabilities — 3D lift
 muscle overlay — are isolated behind guards, so that any failure degrades the result rather than
 failing the whole request.
 
-### 7.3 Component responsibilities
-
-| Component | Responsibility |
-|-----------|----------------|
-| API layer | Validates the request, orchestrates analysis, maps errors to responses |
-| Video I/O | Decodes the clip, reads metadata, samples frames at a fixed rate |
-| Pose estimation | Runs RTMPose per frame; selects the main subject when several people are present |
-| Pose sequence | Collects whole-clip 2D poses so later stages see the full movement, not isolated frames |
-| 3D lifting | Converts the 2D sequence to 3D joint positions; guards reject an inconsistent reconstruction |
-| Scaling | Converts arbitrary 3D units to millimetres using the ChArUco board calibration (bone lengths in the prototype phase) |
-| Kinematics | Computes the joint angle for each frame and smooths the resulting series |
-| Metrics | Derives ROM, angular velocity and acceleration, and smoothness from the angle series |
-| Quality grading | Scores recording quality and rejects clips below the floor |
-| Screening | Applies task thresholds to produce a risk level, confidence, and flags |
-| Visualisation | Builds the annotated video, the angle graph, and the 3D simulation payload |
-
-### 7.4 Technology
+### 7.3 Technology
 
 | Concern | Choice | Rationale |
 |---------|--------|-----------|
@@ -403,39 +384,23 @@ failing the whole request.
 The interface deliberately avoids a JavaScript framework and build step. The team's strength is the
 analysis, and a plain static page keeps the local application maintainable.
 
-### 7.5 Data handling
+### 7.4 Data handling
 
 **During a single assessment.** The uploaded video is written to a temporary folder, analysed, and
-deleted as soon as the request finishes. The generated artefacts — the annotated video and the 3D
-simulation data — are held only long enough for the browser to display them and then expire on a
-timer. Nothing is transmitted off the machine. In this mode the application stores no patient data at
-all once a session is closed.
+deleted as soon as the request finishes. Nothing is transmitted off the machine.
 
-**For monitoring over time.** Comparing today's session against an earlier one requires keeping the
-earlier session's *metrics* somewhere. The video itself never needs to be kept — only a small set of
-numbers (date, task, ROM, velocity, smoothness, quality grade). This is a genuine design decision with
-several options:
+**For monitoring over time**, the session's *metrics* must be kept — never the video.
+**Decision (2026-08-07): local files, plus export and re-import.** Each session is a small folder of
+human-readable JSON on the local disk, trivial to back up, copy, or delete; export and re-import let
+a result move between machines as a file. A database (SQLite) was considered and **cancelled**: it
+earns its keep at hundreds of sessions, and a proof of concept never gets there. A cloud portal for
+remote review stays deliberately possible for later.
 
-| Option | How it works | Advantages | Disadvantages |
-|--------|--------------|------------|---------------|
-| **A. Caller supplies the baseline** | The application stores nothing; whoever calls it passes the previous metrics along with the new request | Zero storage, zero privacy obligation here | Requires something else to do the storing — unworkable for a standalone local application |
-| **B. Local file per patient** | Each patient's session history is a small JSON file on the local disk | Very simple, human-readable, trivial to back up or delete, no new dependency | Manual file management; awkward beyond a few hundred sessions |
-| **C. Local database (SQLite)** | One local database file holds all sessions, queried by patient and date | Included with Python, robust, handles many sessions and searching | Contents are not directly readable without a tool; slightly more code |
-| **D. Export and re-import** | The clinician saves a small result file after each session and uploads it alongside the next recording | Application still stores nothing; the clinician holds the data | Depends on the clinician not losing the file; poor experience |
-| **E. Cloud or clinician portal** | Sessions are stored on a server that clinicians can access remotely (Team1's work) | Enables remote review and multi-clinician access | Requires infrastructure and introduces real privacy and data-protection obligations |
+**Patient identity.** Sessions are keyed by a patient identifier supplied by the clinician. The
+application does not need names, addresses, or any other identifying detail, and should not collect
+them.
 
-**Decision (2026-08-07): options B and D together, for ease of use.** The file store that exists
-today already is option B — each session is a small folder of human-readable JSON files on the local
-disk, trivial to back up, copy, or delete. Option D adds export and re-import on top, so a result can
-be saved as a file and opened again elsewhere. SQLite (option C) is **cancelled for this round**: a
-database earns its keep at hundreds of sessions and a proof of concept never gets there. Option E
-stays deliberately possible for later.
-
-**Patient identity.** Whichever option is chosen, sessions are keyed by a patient identifier supplied
-by the clinician. The application does not need names, addresses, or any other identifying detail,
-and should not collect them.
-
-### 7.6 Comparing across recordings
+### 7.5 Comparing across recordings
 
 Limb symmetry (left leg against right) and progress over time (today against an earlier visit) each
 need two recordings, so neither can come from analysing a single one. They are asked for separately:
@@ -457,9 +422,9 @@ instead of the opposite leg.
 both pass the quality floor. Otherwise the endpoint reports *not comparable* with the reason rather
 than a number, because a figure from mismatched recordings looks just as authoritative as a valid one.
 
-**Required change.** The analysis request must state which leg the patient was told to move; it
-currently does not. This also allows flagging a recording where the declared leg is not the one that
-actually moved. Defined in [03-api-contract.md](03-api-contract.md).
+The analysis request states which leg the patient was told to move (`side`, mandatory), which is what
+makes pairing possible — and lets the system flag a recording where the declared leg is not the one
+that actually moved.
 
 ---
 
@@ -474,27 +439,3 @@ actually moved. Defined in [03-api-contract.md](03-api-contract.md).
 4. **Testable core.** Measurement logic is verified against known-answer cases independently of
    video, models, or the network.
 5. **Decision support, not diagnosis.** Stated in the specification, enforced in the output.
-
----
-
-## 9. Glossary
-
-Every clinical and technical term used across this documentation set — sarcopenia, AWGS 2019, ROM,
-MCID, LDLJ, pose estimation, monocular lifting, metric scale, and the rest — is defined in
-[00-glossary.md](00-glossary.md).
-
----
-
-## 10. Document map
-
-| Document | Purpose |
-|----------|---------|
-| [00-glossary.md](00-glossary.md) | Definitions of every term used |
-| **01-specification.md** | *This document — what the project is and why* |
-| [02-pipeline.md](02-pipeline.md) | Patient workflow and the technical data pipeline |
-| [03-api-contract.md](03-api-contract.md) | Request and response formats |
-| [04-planning.md](04-planning.md) | Phases, tasks, risk, effort, benefit |
-| [05-user-manual.md](05-user-manual.md) | How to perform, record, and interpret each task |
-| [06-setup.md](06-setup.md) | Installation and running the application |
-| [07-evaluation-and-limitations.md](07-evaluation-and-limitations.md) | Accuracy, validation, and honest limits |
-| [08-spec-alignment.md](08-spec-alignment.md) | Status against the advisor's specification |

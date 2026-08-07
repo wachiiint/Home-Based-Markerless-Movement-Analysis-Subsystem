@@ -4,9 +4,10 @@
 > Terms are defined in [00-glossary.md](00-glossary.md). What each stage does is in
 > [02-pipeline.md](02-pipeline.md).
 
-**This is a redesign.** The previous contract was shaped to drop into an existing MediaPipe-based
-backend. With the application now running standalone, it has been rebuilt around what the system
-actually produces. Differences from the old shape are listed in Part 9.
+> **Status: a design, not yet the running API.** The `/api/v1/` contract in parts 1–7 was designed
+> in this round and is ready for the **prototype phase** to implement. What actually runs today is
+> `/api/movement/assess` plus the demo endpoints — part 8.1 lists them, and part 9 maps every
+> difference between the running API and this design.
 
 ---
 
@@ -61,8 +62,8 @@ Multipart form upload.
 | `recorded_at` | ISO-8601 | no | When the video was filmed. Defaults to upload time |
 | `notes` | string | no | Free text kept with the session |
 
-`side` is new and mandatory. Without it, left and right recordings cannot be paired for symmetry, and
-the system cannot check that the instructed leg is the one that actually moved.
+`side` is mandatory (and already is on the running API). Without it, left and right recordings cannot
+be paired for symmetry, and the system cannot check that the instructed leg is the one that moved.
 
 ### Response — completed
 
@@ -365,28 +366,15 @@ The index changed because the limb-symmetry framing assumes a sound reference li
 injury work supplies and a bilaterally declining population does not. The symmetry angle needs no
 reference leg.
 
-**What the page adds on top of the endpoint.** The comparison response carries metrics only. The
-angle series and the lifted skeleton already live in the stored sessions, so `/compare` reads them
-from `GET /api/demo/sessions/{session_id}` — the same endpoint the analysis page reopens a session
-with, so a stored result has one shape and not two. Two consequences worth knowing:
+**What the page adds on top of the endpoint.** The `/compare` page also draws the angle graph — one
+line per leg, each from its own recording, on a **shared axis but not a shared clock** (the caveat is
+printed under the chart) — and the 3D viewer, which shows **one recording at a time** behind a
+left/right selector, because overlaying two skeletons from two cameras would invite reading camera
+differences as leg differences.
 
-- **The graph shares an axis, not a clock.** Two lines, one per leg, each from its own recording. The
-  axis runs to the longer of the two clips and the shorter one simply ends; 4 s into one clip is not
-  the same instant as 4 s into the other. Normalising both onto a common 0–100% time would look tidier
-  and would invent a frame-to-frame correspondence that never existed, so it is not done, and the
-  caveat is printed under the chart rather than left for the reader to infer.
-- **The 3D viewer shows one recording at a time**, behind a left/right selector. Overlaying the two
-  skeletons would render a difference between two cameras, two distances and two scales, and invite it
-  to be read as a difference between two legs — the exact error the two-clip design exists to avoid.
-  The comparison stays in the table, where it is measured rather than eyeballed.
-
-A pair that fails a blocking check gets neither: two pictures side by side are the by-eye comparison
-that the refusal exists to withhold.
-
-The threshold is absent because there is no evidence for one. Calling 10 percent abnormal requires
-knowing how far apart two recordings of the *same* leg land; without that test–retest figure a
-threshold cannot separate asymmetry from recording noise. That study is scheduled in
-`docs2/04-planning.md`; until it reports, this endpoint states the difference and stops.
+**No threshold is reported, deliberately.** Calling 10 percent abnormal requires knowing how far
+apart two recordings of the *same* leg land; until the test-retest repeatability study reports
+([04-planning.md](04-planning.md)), the endpoint states the difference and stops.
 
 ---
 
@@ -440,7 +428,7 @@ Failures of the *request* are HTTP errors. Failures of the *recording* are `200`
 ## 8. Storage
 
 **Local files, plus export and re-import** (decision of 2026-08-07 — see
-[01-specification.md](01-specification.md) section 7.5). Each session is a small folder of
+[01-specification.md](01-specification.md) section 7.4). Each session is a small folder of
 human-readable JSON on the local disk; the whole history is one directory to back up or delete. The
 earlier SQLite plan is cancelled — a database earns its keep at hundreds of sessions, and a proof of
 concept never gets there.
@@ -478,10 +466,6 @@ Two differences from the target contract above, both deliberate and both tempora
 - **The annotated video is kept**, which the target contract does not do. It is the patient's own
   footage with a skeleton drawn over it, so `KEEP_ANNOTATED_VIDEO=false` turns it off and stores only
   metrics and keypoints. Keep it on for our own clips; turn it off before real patient recordings.
-  It is written as **H.264/MP4** so the browser can play it inline; where no H.264 encoder is
-  available the writer falls back to OpenCV's `mp4v` (MPEG-4 Part 2) and logs a warning — those files
-  still open in a desktop player, but the demo page can only offer them as a download. Sessions
-  recorded before this change are `mp4v`; re-run the clip to get a playable render.
 - **Nothing expires.** `DEMO_RESULT_TTL_SECONDS=0` — the default — means a stored session is never
   deleted. A positive value restores the old expiring behaviour, which is why `expires_at` is still on
   the response and is simply `null` when nothing expires.
@@ -501,45 +485,32 @@ The shared shape is the point: the interface renders a reopened session through 
 a new one, so there is no second view of a result that can quietly drift from the first.
 
 **Still not built:** the progress comparison. Symmetry now has its endpoint (part 5.1); comparing a
-session against an earlier baseline of the *same* leg does not, and that is the half of P4 that still
-needs the MCID verdict work.
+session against an earlier baseline of the *same* leg does not — that work, with its MCID verdict,
+carries into the prototype phase.
 
 ---
 
-## 9. What changes from the current implementation
+## 9. Running API versus this design
 
-| Area | Before | Now |
+What the prototype phase changes when it implements the `v1` contract. Rows marked *shipped* already
+happened in the PoC.
+
+| Area | Running today | The `v1` design |
 |------|--------|-----|
 | Path | `/api/movement/assess` | `/api/v1/assessments` |
 | Top-level shape | Five fixed keys | Status-led, with `recording`, `analysis`, `metrics`, `quality`, `screening`, `artifacts` |
-| `side` on request | Absent | **Required** |
+| `side` on request | **Mandatory** *(shipped)* | Same |
 | Both-legs metrics | Side-prefixed keys (`left_knee_rom_deg`) | Nested under `metrics.left` / `metrics.right` |
 | Bad recordings | Flagged, metrics still returned | **Rejected**, no metrics returned |
 | Confidence | `0.5 × frames + 0.5 × confidence` | `0.40 × frames + 0.40 × confidence + 0.20 × tracking stability` |
-| Symmetry | Ratio 0 to 1, inside the analysis response | Percentage, from its own comparison endpoint. *Shipped as `/api/demo/compare` — see part 5.1. The in-response `symmetry_index_score` is still there and still wrongly scoped* |
+| Symmetry | `/api/demo/compare` *(shipped — part 5.1)*, plus the superseded in-response `symmetry_index_score` | Its own comparison endpoint; the in-response score removed |
 | Naming | `knee_rom_deg` | `estimated_knee_rom_deg` |
-| Trajectories | Computed then discarded | Returned in `trajectory` — *already shipped on the current response* |
+| Trajectories | Returned in top-level `trajectory` *(shipped)* | Same |
 | Velocity, acceleration | Absent | In `metrics` |
-| History | None | Local file store, enabling symmetry and progress. *Ships today — see part 8.1* |
-| Calibration board | Primary scale source | Stays primary for the PoC; bone length moves to the prototype phase |
+| History | Local file store *(shipped — part 8.1)* | Same store, plus re-import |
+| Calibration board | Primary scale source | Stays primary; bone length arrives in the prototype phase |
 
 **The rejection guard is the one behaviour change a caller must handle.** Everything else is additive
 or a rename; a caller that previously received numbers for a poor recording will now receive a
 rejection instead. That is the intended safety improvement, and any consumer must branch on
 `assessment_status` before reading `metrics`.
-
----
-
-## Related documents
-
-| Document | Purpose |
-|----------|---------|
-| [00-glossary.md](00-glossary.md) | Definitions of every term used |
-| [01-specification.md](01-specification.md) | What the project is and why |
-| [02-pipeline.md](02-pipeline.md) | Patient workflow and the technical data pipeline |
-| **03-api-contract.md** | *This document* |
-| [04-planning.md](04-planning.md) | Phases, tasks, risk, effort, benefit |
-| [05-user-manual.md](05-user-manual.md) | How to perform, record, and interpret each task |
-| [06-setup.md](06-setup.md) | Installation and running the application |
-| [07-evaluation-and-limitations.md](07-evaluation-and-limitations.md) | Accuracy, validation, and honest limits |
-| [08-spec-alignment.md](08-spec-alignment.md) | Status against the advisor's specification |

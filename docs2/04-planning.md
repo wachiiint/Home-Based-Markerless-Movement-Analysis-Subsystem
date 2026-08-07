@@ -1,280 +1,103 @@
 # 04 — Planning
 
-> What is built, what is next, and what it costs.
-> Everything marked ⚠️ in [02-pipeline.md](02-pipeline.md) and every change listed in
-> [03-api-contract.md](03-api-contract.md) part 9 appears here as a task.
-
-**How to read the annotations.** Each task carries `effort · risk · benefit`. Effort is working days
-for one person. Risk is the chance it takes longer than estimated or breaks something else.
+> Where the project stands as its proof-of-concept round closes, what remains to close it, and what
+> carries into the prototype proposal. The phase-by-phase history of how it was built lives in git.
 
 ---
 
-## 0. Direction change — 2026-08-07
+## 1. The direction — decided 2026-08-07
 
-The project now **concludes as a proof of concept** (see [01-specification.md](01-specification.md)
-section 1.5). What it demonstrates: a camera alone can record and analyse a patient's movement for
-tele-rehabilitation. The P0–P4 plan below is **no longer the roadmap** — it is kept because its task
-notes record what was built and why, and its unbuilt items are the candidate list for the next phase.
+An application grows through three engineering phases: **proof of concept**, then **prototype**, then
+**deployment**. This round concludes as the proof of concept, and its claim is demonstrated:
+**a camera alone can record and analyse a patient's movement for tele-rehabilitation.**
 
-**Remaining work to close the PoC** (implementation owned by the team):
+The standing decisions for the PoC:
 
-- The **ChArUco board stays** as the camera-calibration and metric-scale path. **Bone-length scaling
-  is postponed to the prototype phase** — its design and reasoning are kept in
-  [01-specification.md](01-specification.md) section 6.4 for the next proposal.
-- Storage stays as **local files, plus export and re-import** (options B + D). SQLite is cancelled.
-- The interface separates into three clear steps: camera calibration, video upload, analysis.
-- The analysis view shows metrics, the angle graph, and the 3D model, and can compare against the
-  patient's stored history.
-- One project summary a newcomer can read end to end.
+- The **ChArUco board** is the camera-calibration and metric-scale path. Bone-length scaling is
+  postponed to the prototype phase — its design is kept in
+  [01-specification.md](01-specification.md) section 6.4.
+- Storage is **local files, plus export and re-import**. SQLite is cancelled.
+- Implementation of the remaining changes is owned by the team; this document tracks what and why.
 
 **What comes after:** a new proposal for the **prototype phase** — engineered deliberately, with
-human review — combining this PoC's summary with the professor's proposal (IMU ground-truth data
-gathering, possible model training for better keypoint extraction, a more solid application).
+human review — combining this PoC's summary ([10-poc-conclusion.md](10-poc-conclusion.md)) with the
+professor's proposal of 2026-08-07: IMU ground-truth data gathering, possible model training for
+better keypoint extraction from video, and a more solid application.
 
 ---
 
-## 1. Where the project stands
+## 2. Where the project stands
 
 | Capability | Status |
 |------------|--------|
 | 2D pose estimation, joint angles, ROM | ✅ Built |
-| Both-legs analysis | ✅ Built |
+| Both-legs analysis, with the instructed side screened | ✅ Built |
 | Smoothness (LDLJ, SPARC, movement units) | ✅ Built |
 | Screening against task thresholds | ✅ Built |
 | Annotated skeleton video | ✅ Built |
-| 3D lifting and motion simulation with muscle overlay | ✅ Built, unreliable — see P3 |
-| Symmetry across two recordings, one clip per leg | ✅ Built — `/compare` page and `GET /api/demo/compare`, no threshold yet |
-| Symmetry inside a single clip (`symmetry_index_score`) | ⚠️ Still in the response and still wrongly scoped — superseded, remove in P4 |
-| ChArUco board calibration | ✅ Built and staying — the PoC's calibration and scale path (2026-08-07) |
-| Quality **rejection** | ❌ Flags only, does not reject |
 | Angle trajectory in the response, and the graph in the interface | ✅ Built |
-| Storing results and reopening a past session | ✅ Built — file store, now the permanent choice (section 0) |
-| Bone-length scale, velocity, comparisons between sessions | ❌ Not built |
+| Storing results and reopening a past session | ✅ Built — local file store |
+| Symmetry across two recordings, one clip per leg | ✅ Built — `/compare` page, no threshold yet |
+| ChArUco board calibration | ✅ Built — the PoC's calibration and scale path |
+| 3D lifting and motion simulation with muscle overlay | ✅ Built, but frequently falls back to 2D |
+| Quality **rejection** | ❌ Flags only, does not reject |
+| Bone-length scale, velocity, progress comparison | ❌ Not built — prototype phase |
 
-**The honest summary:** the measurement core works, and results are now kept rather than discarded.
-What is missing is the safety guard, the patient-specific scaling that makes 3D trustworthy, and the
-layer that *compares* two stored recordings — storing them was the prerequisite, not the answer.
-
----
-
-## 2. Phase plan
-
-Five phases, roughly seven to eight weeks of one person's work. Each phase leaves the system working.
-
-| Phase | Theme | Effort |
-|-------|-------|--------|
-| **P0** | Contract, naming, and the safety guard | ~1 week |
-| **P1** | Trajectories, velocity, and graphs | ~1 week |
-| **P2** | Storage and bone-length scale | ~2 weeks |
-| **P3** | 3D reliability | ~2 weeks |
-| **P4** | Comparison and monitoring | ~1.5 weeks |
+**The honest summary:** the measurement core works, and results are kept rather than discarded. The
+known gaps are the hard-reject safety guard, the patient-specific scaling that would make 3D
+trustworthy, and comparing a patient against their own earlier baseline.
 
 ---
 
-## P0 — Contract, naming, and the safety guard
+## 3. Remaining work to close the PoC
 
-The response shape changes here, so this comes first — later work builds on it. Also contains the one
-genuine safety gap.
-
-- [ ] **Restructure the response to the new contract** — 3 d · medium · everything downstream assumes it
-- [x] **Add `side` to the analysis request** — 0.5 d · low · unblocks all pairing and symmetry work
-      *Done ahead of the restructure: `side` is mandatory on `/api/movement/assess` and `/api/demo/assess`,
-      and only the declared leg is screened. Previously the resting contralateral leg was screened too, so
-      its near-zero ROM drove the headline risk to `high` on every unilateral clip.*
-- [ ] **Hard-reject guard on poor recordings** — 1 d · medium · **the safety fix**; stops plausible numbers coming from unusable video
-- [ ] **Add `tracking_stability_score`** — 2 d · medium · new metric; catches jumpy tracking that per-frame confidence misses
-- [ ] **Reweight confidence to 0.40 / 0.40 / 0.20** — 0.5 d · low · matches the advisor's specification
-- [ ] **Rename inferred quantities to `estimated_`** — 1 d · low · honesty, enforced in the field names
-- [x] **Flag when the declared side is not the leg that moved** — 0.5 d · low · catches mislabelled recordings for free
-      *Emitted as `declared_side_did_not_move_most` (only when the other leg out-moves the declared one by
-      15°+, so a lateral view's occluded far leg does not trip it) and `declared_side_barely_moved`.*
-- [ ] **Update tests and the demo page to the new shape** — 1.5 d · low · keeps the suite green
-- [ ] **Trim the test suite while updating it** — 0.5 d · low · 105 tests is heavy for a project this size
-
-**On trimming tests.** The response restructure invalidates a chunk of the suite anyway, so P0 is the
-right moment to cut rather than doing it as separate work. Two cautions when choosing what goes.
-Keep the **known-answer kinematics tests** — they check that a known geometric input produces the
-expected angle, which is the only real evidence the measurement maths is right. And remember that the
-suite already proves less than it appears to: it demonstrates code correctness, not measurement
-accuracy (see [07-evaluation-and-limitations.md](07-evaluation-and-limitations.md) part 3). Cutting
-tests reduces the first without improving the second, so trim duplicates and scaffolding, not the
-maths.
-
-**Note on `tracking_stability_score`.** It does not exist yet and must be defined. The intended
-meaning is how steadily the skeleton was tracked between frames — large frame-to-frame jumps in joint
-position lower it, even when each individual frame looks confident.
+- [ ] The interface separates into three clear steps: **camera calibration → video upload → analysis**
+- [ ] The analysis view shows metrics, the angle graph, and the 3D model, and can **compare against
+      the patient's stored history**
+- [ ] **Export and re-import** of results
+- [ ] The one-page conclusion a newcomer can read end to end — [10-poc-conclusion.md](10-poc-conclusion.md)
 
 ---
 
-## P1 — Trajectories, velocity, and graphs
+## 4. Carried into the prototype proposal
 
-The highest value per day in the whole plan. The per-frame angles are already computed and then
-thrown away; keeping them unlocks the graph, velocity, and later the progress comparison.
+Everything designed or discovered in the PoC that was deliberately not built here. This table plus
+the professor's proposal is the raw material for the prototype plan.
 
-- [x] **Return the angle trajectory in the response** — the movement itself, not just its extremes.
-      Top-level `trajectory`, one entry per sampled frame, `null` for frames the tracker could not read.
-- [ ] **Compute angular velocity and acceleration** — 1 d · low · shows hesitancy that ROM alone hides
-- [x] **Draw the trajectory graph in the interface** — plain SVG in `03 / ANALYSIS`, both legs on one
-      time axis with the instructed leg emphasised, plus a per-frame CSV of the plotted series
-- [ ] **Add `estimated_step_length_ratio`** — 0.5 d · low · advisor's specification; needs no calibration at all
-
----
-
-## P2 — Storage and bone-length scale
-
-The architectural centre of the plan. Replaces the printed board with a number typed in once, and
-gives the application memory.
-
-- [ ] ~~**SQLite storage layer**~~ **Cancelled 2026-08-07** — the file store below is the storage,
-      full stop; see section 0
-      *Partly delivered ahead of schedule as a **file-backed store** (`services/session_store.py`), because
-      a proof-of-concept demo needed results to survive a restart. Analyses are written to
-      `data/sessions/<patient_id>/<timestamp>-<session_id>/` and summarised one row per session in an
-      append-only `index.jsonl`; `GET /api/demo/sessions` lists them and `GET /api/demo/sessions/{id}`
-      reopens one in the shape a fresh analysis returns. The remaining SQLite work is the index layer over
-      these rows, not a rewrite of them. See [03-api-contract.md](03-api-contract.md) part 8.1.*
-- [ ] **Patient record endpoints, with bone lengths per side** — *postponed to the prototype phase (2026-08-07)*
-- [ ] **Bone-length metric scale** — *postponed to the prototype phase (2026-08-07)*
-- [x] **Store every completed session** — 1 d · low · required by every comparison
-      *Every completed analysis is stored and kept. Rejected sessions cannot be stored yet because the
-      rejection guard itself is P0 work and does not exist.*
-- [ ] ~~**Demote the ChArUco board to optional**~~ **Cancelled 2026-08-07** — the board stays as the calibration and scale path for the PoC
-- [ ] **Bone-length entry in the interface** — *postponed to the prototype phase (2026-08-07)*
-
-**Watch for:** hospital bone measurements use anatomical landmarks while the model uses joint
-centres, so expect a systematic offset of a few percent. Use bone length only as a scaling *ratio*
-and never report absolute segment lengths back to a clinician.
+| Item | Why it matters |
+|------|----------------|
+| **Hard-reject quality guard** | The one safety gap: today a poor recording is flagged but still returns plausible numbers. The `v1` contract ([03-api-contract.md](03-api-contract.md)) already defines the rejection shape |
+| **Implement the `v1` API contract** | Designed and documented in [03-api-contract.md](03-api-contract.md); the running API differs as its part 9 maps — including the `estimated_` renames and `tracking_stability_score` |
+| **Bone-length metric scale** (manual entry, MRI import) | Removes the printed board and its failure modes; per side, ratio only. Design in [01-specification.md](01-specification.md) section 6.4 |
+| **3D reliability** — bone-length constrained refinement, neutral-pose zero reference | What makes a 3D-first architecture honest. Both are high-risk: refinement can over-constrain and hide real asymmetry; the neutral pose must be optional |
+| **Angular velocity and acceleration** | Shows hesitancy that ROM alone hides; the trajectory it derives from already ships |
+| **Progress against the patient's own baseline, with MCID verdict** | The monitoring layer. Also removes the superseded in-response `symmetry_index_score` |
+| **Test–retest repeatability study** | The blocker on every threshold: until we know what two recordings of the *same* leg disagree by, no asymmetry percentage can honestly be called abnormal. Needs several people recorded two or three times per leg — data collection, not code |
+| **Record the camera setup per session** | The known hole in the comparability guard: nothing stored says where the camera sat. Subject bounding-box size is the cheap proxy, and it must land **before** the repeatability data is collected |
+| **ROM thresholds for other populations** | Current values are clinician-confirmed **for elderly patients only** (2026-08-04); the end goal is use with anyone |
+| **Screening layer** (5-STS, gait speed, TUG) | A separate build needing stopwatch timing and walking tasks |
+| Smaller items | Ankle tasks in 3D (needs a lifter with foot joints); age-matched smoothness Z-score (needs reference data); pelvis sway, lighting and blur scores; OpenSim export (confirm wanted); CT muscle data (Team 6); cloud portal for remote review |
 
 ---
 
-## P3 — 3D reliability
+## 5. Open questions
 
-Today the 3D reconstruction is frequently rejected by its own consistency check. This phase is what
-makes a 3D-first architecture honest rather than aspirational.
-
-- [ ] **Bone-length constrained refinement** — 5 d · high · known bone lengths *correct* the reconstruction instead of only judging it
-- [ ] **Neutral standing pose as a personal zero reference** — 4 d · high · the direct fix for systematic joint-angle bias
-- [ ] **Report 3D reliability honestly in the response** — 1 d · low · a reader always knows which path produced the numbers
-
-**Both carry high risk.** Constrained refinement can over-constrain and hide genuine asymmetry, which
-is why bone lengths are per side. The neutral pose depends on patients following an instruction, so
-it must be optional — if no still segment is found, skip the correction and warn rather than fail.
+| Question | Who decides |
+|----------|-------------|
+| How many days may separate two sides of one symmetry comparison? Default 30 (`ASYMMETRY_MAX_DAYS_APART`); exceeding it warns rather than refuses | The clinician |
+| What asymmetry counts as abnormal? Nothing is claimed today | The repeatability study first, then the clinician |
+| Are the movement instruction phrases universal enough? Awaiting the doctor's review of recorded example videos | The clinician |
+| Should rejected recordings be visible in patient history, or hidden? | The clinician |
+| Is the OpenSim export still wanted? | The advisor |
 
 ---
 
-## P4 — Comparison and monitoring
+## 6. Risks that carry into the prototype
 
-Delivers the monitoring layer, and puts symmetry back on a correct footing.
-
-- [x] **Session lookup and listing** — find the counterpart to compare against
-- [x] **Symmetry comparison endpoint** — `GET /api/demo/compare`, left against right across two recordings
-- [x] **Comparability guard on the symmetry pair** — blocking checks refuse a mismatched pair outright
-- [x] **Symmetry view in the interface** — the `/compare` page: metric table, two-line angle graph, and the 3D viewer with a left/right selector
-- [ ] **Test–retest repeatability study** — 3 d + data collection · **high** · the blocker on every threshold below
-- [ ] **A defensible asymmetry threshold** — 1 d · low · trivial once the study reports, impossible before it
-- [ ] **Progress endpoint with MCID verdict** — 3 d · medium · answers whether a change is real or noise
-- [ ] **Comparability guard on progress** — 1 d · medium · the same refusals, over two recordings of one leg
-- [ ] **Progress views in the interface** — 2 d · medium
-- [ ] **Record the camera setup per session** — 1 d · medium · subject bbox size, resolution, orientation in the index row
-- [ ] **Remove `symmetry_index_score` from the analysis response** — 0.5 d · low · superseded by the endpoint above
-
-**The repeatability study is the critical path, and it is the one item that cannot be shortened by
-working harder.** Until we know what two recordings of the *same* leg disagree by, no number of
-percent can be called abnormal — a 12 percent threshold over 15 percent recording noise flags
-everybody. Collecting it needs several people recorded two or three times per leg, so it should start
-in parallel with the code work rather than after it.
-
-**Camera setup is the known hole in the comparability guard.** Nothing stored today says where the
-camera sat, so the guard cannot check that two clips were filmed the same way; it says so in a
-standing warning instead of implying a check it did not make. Recording the subject's bounding-box
-size per session is the cheap proxy — it moves with camera distance — and it must land before the
-repeatability data is collected, or that data inherits the same blind spot.
-
----
-
-## 3. Dependencies
-
-```
-P0 (contract + side field)
-      │
-      ├──▶ P1 (trajectories) ──────────────┐
-      │                                     │
-      └──▶ P2 (storage + bone length) ──┬──▶ P4 (comparisons)
-                                         │
-                                         └──▶ P3 (3D reliability)
-```
-
-P0 comes first because everything assumes the response shape. P1 and P2 are independent and can run
-in either order. P3 needs bone lengths from P2. P4 needs storage from P2 and trajectories from P1.
-
----
-
-## 4. Risk register
-
-| Risk | Likelihood | Impact | Mitigation |
-|------|-----------|--------|------------|
-| 3D stays unreliable even after P3 | Medium | High — undermines the 3D-first claim | 2D fallback already works and is clinically valid. Report the mode honestly and do not overclaim |
-| Bone-length offset from landmark-versus-joint-centre difference | High | Low | Use as a ratio only; never report absolute segment lengths |
-| Patients cannot hold the neutral pose | Medium | Medium | Optional by design — skip and warn, never fail |
-| Rejection guard rejects too many real recordings | Medium | Medium | Measure the rejection rate on real clips before fixing thresholds. Return the annotated video so users can see why |
-| Interface work exceeds the team's comfort | Medium | Medium | Plain HTML and JavaScript, no framework or build step. Graphs are the only new component |
-| Ankle tasks can never be 3D | Certain | Low | Documented and accepted. 2D sagittal is the clinical standard for ankle ROM anyway |
-| Thresholds are convention, not validated | High | Medium | Stated openly in [07-evaluation-and-limitations.md](07-evaluation-and-limitations.md); a validation study is future work |
-
----
-
-## 5. Backlog — deliberately not scheduled
-
-| Item | Why deferred |
-|------|--------------|
-| **Screening layer** (5-STS, gait speed, TUG) | A separate build needing stopwatch timing and walking tasks. Bone-length scale makes gait speed newly feasible, so this is the natural next project |
-| **Ankle tasks in 3D** | Needs a lifting model with foot joints. Real work, low return — 2D ankle measurement is the clinical standard |
-| **Age-matched smoothness Z-score** | Needs reference data from many patients per age group, which the project does not have |
-| **Pelvis sway, lighting score, blur score** | In the advisor's specification but not requested by the clinician. Cheap to add later |
-| **OpenSim kinematics export** | Scientifically interesting, one to three weeks, and absent from the advisor's specification. Confirm it is wanted before starting |
-| **CT muscle data (Team 6)** | Another team's work. Integration is possible later; nothing here depends on it |
-| **Cloud portal for remote review** | Would let a doctor read results without sitting at the machine, but brings real privacy obligations. The contract stays integration-ready so this remains possible |
-| **ROM thresholds for non-elderly patients** | The current per-task thresholds were confirmed by the clinician for **elderly** patients (2026-08-04). The end goal is use with anyone, so other populations need their own reviewed values before the risk levels can be trusted for them |
-| **MRI import of bone lengths** | Raised by the advisor (2026-08-04). Manual entry comes first — now prototype-phase work; where a patient already has a scan, importing the lengths from it would remove the typing step |
-
----
-
-## 6. Definition of done
-
-A phase is complete when all of the following hold.
-
-- [ ] Every task in the phase is ticked
-- [ ] The full test suite passes
-- [ ] New behaviour has tests covering both the working path and the failure path
-- [ ] The affected documents in `docs2/` are updated in the same change
-- [ ] The application starts and runs one real recording end to end
-- [ ] Any new limitation is recorded in [07-evaluation-and-limitations.md](07-evaluation-and-limitations.md)
-
----
-
-## 7. Open questions
-
-| Question | Who decides | Blocks |
-|----------|-------------|--------|
-| How many days may separate two sides of one symmetry comparison? Default is 30 (`ASYMMETRY_MAX_DAYS_APART`), and exceeding it warns rather than refuses, precisely because nobody has decided | The clinician | Nothing — the comparison ships without the answer |
-| What asymmetry counts as abnormal? Nothing is claimed today | The repeatability study first, then the clinician | The asymmetry threshold |
-| ~~Are the per-task expected and borderline ROM values clinically right?~~ **Answered 2026-08-04: yes, for elderly patients.** Values for other populations are a backlog item | — | Resolved |
-| Are the movement instruction phrases universal enough? Awaiting the doctor's review of recorded example videos | The clinician | Nothing now — reword in [05-user-manual.md](05-user-manual.md) once reviewed |
-| Is the OpenSim export still wanted? | The advisor | Backlog |
-| Should rejected recordings be visible in patient history, or hidden? | The clinician | P2 |
-
----
-
-## Related documents
-
-| Document | Purpose |
-|----------|---------|
-| [00-glossary.md](00-glossary.md) | Definitions of every term used |
-| [01-specification.md](01-specification.md) | What the project is and why |
-| [02-pipeline.md](02-pipeline.md) | Patient workflow and the technical data pipeline |
-| [03-api-contract.md](03-api-contract.md) | Request and response formats |
-| **04-planning.md** | *This document* |
-| [05-user-manual.md](05-user-manual.md) | How to perform, record, and interpret each task |
-| [06-setup.md](06-setup.md) | Installation and running the application |
-| [07-evaluation-and-limitations.md](07-evaluation-and-limitations.md) | Accuracy, validation, and honest limits |
-| [08-spec-alignment.md](08-spec-alignment.md) | Status against the advisor's specification |
+| Risk | Mitigation |
+|------|------------|
+| 3D stays unreliable even after refinement | The 2D fallback is clinically valid; report the mode honestly and do not overclaim |
+| Bone-length offset (landmarks versus joint centres) | Use as a scaling ratio only; never report absolute segment lengths |
+| Patients cannot hold the neutral pose | Optional by design — skip and warn, never fail |
+| Rejection guard rejects too many real recordings | Measure the rejection rate on real clips before fixing thresholds |
+| Thresholds are convention, not validated | Stated openly in [07-evaluation-and-limitations.md](07-evaluation-and-limitations.md); a validation study is future work |

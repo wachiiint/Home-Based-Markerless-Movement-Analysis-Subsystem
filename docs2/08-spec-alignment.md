@@ -1,10 +1,10 @@
-# 08 — Alignment with the Advisor's Specification
+﻿# 08 — Alignment with the Advisor's Specification
 
 > A living checklist against the *Architecture Specification: AI-Based Home Remote Assessment System
 > (2026)*. It answers one question at a glance: **which parts of the specification are done, which are
 > coming, and which we have deliberately declined.**
 >
-> Update this file whenever a phase in [04-planning.md](04-planning.md) completes.
+> This is the state at the close of the proof-of-concept round. Update it as prototype work lands.
 
 **Status legend**
 
@@ -12,7 +12,7 @@
 |------|---------|
 | ✅ | Aligned — implemented and matching the specification |
 | ⚠️ | Partial — the quantity exists but the scale, name, or structure differs |
-| 🔵 | Planned — scheduled in [04-planning.md](04-planning.md), with the phase named |
+| 🔵 | Planned — carried into the prototype phase; see [04-planning.md](04-planning.md) part 4 |
 | ❌ | Missing — not built and not currently scheduled |
 | ⛔ | Out of scope — a deliberate decision, with the reason given |
 
@@ -24,7 +24,7 @@
 |--------|-------|---------|
 | ✅ Aligned | 4 | The core mathematics: joint angle, ROM, LDLJ smoothness, and the reference list |
 | ⚠️ Partial | 5 | Right quantity, wrong scale or name — cheap to fix |
-| 🔵 Planned | 7 | Mostly P0 and P4 |
+| 🔵 Planned | 7 | All carried into the prototype phase |
 | ❌ Missing | 7 | Metrics needing data or research we do not have |
 | ⛔ Out of scope | 9 | The entire screening layer, by agreement |
 
@@ -40,10 +40,10 @@ issue, and the entire screening layer, which is a separate project.
 |--------------------|--------|-------|
 | Joint angle: `arccos(v1·v2 / (‖v1‖‖v2‖))` | ✅ | Identical to our implementation, including the clipping guard |
 | ROM = `max_angle − min_angle` | ✅ | Identical |
-| `estimated_step_length_ratio` = ankle distance ÷ height in pixels | 🔵 **P1** | Scale-invariant, needs no calibration. The cheapest item in the specification |
+| `estimated_step_length_ratio` = ankle distance ÷ height in pixels | 🔵 **Prototype** | Scale-invariant, needs no calibration. The cheapest item in the specification |
 | Log dimensionless jerk (LDLJ) | ✅ | Implemented from the same cited reference. We also compute SPARC as a cross-check |
 | Age-matched smoothness Z-score | ❌ | Requires mean and standard deviation of LDLJ per age group. We have no such reference data — see the advisor question in [07](07-evaluation-and-limitations.md) |
-| LSI = `\|L−R\| / (0.5·(L+R)) × 100` | ⚠️ → 🔵 **P4** | Same quantity, expressed as a 0-to-1 ratio instead of a percentage. Ours × 200 gives the specification's value. Being rebuilt as a cross-recording comparison, which is also the clinically correct form |
+| LSI = `\|L−R\| / (0.5·(L+R)) × 100` | ⚠️ → 🔵 **Prototype** | Same quantity, expressed as a 0-to-1 ratio instead of a percentage. Ours × 200 gives the specification's value. Being rebuilt as a cross-recording comparison, which is also the clinically correct form |
 
 ---
 
@@ -68,11 +68,11 @@ This table is the heart of the project.
 
 | Specification item | Status | Notes |
 |--------------------|--------|-------|
-| `estimated_knee_rom_deg` | ⚠️ → 🔵 **P0** | Computed correctly; needs the `estimated_` prefix |
-| `estimated_hip_rom_deg` | ⚠️ → 🔵 **P0** | Same |
+| `estimated_knee_rom_deg` | ⚠️ → 🔵 **Prototype** | Computed correctly; needs the `estimated_` prefix |
+| `estimated_hip_rom_deg` | ⚠️ → 🔵 **Prototype** | Same |
 | `estimated_pelvis_sway_mm` | ❌ | Not requested by our clinician. Cheap to add once metric scale exists |
-| `estimated_step_length_ratio` | 🔵 **P1** | See part 2 |
-| `estimated_symmetry_index` (percent) | ⚠️ → 🔵 **P4** | See part 2 |
+| `estimated_step_length_ratio` | 🔵 **Prototype** | See part 2 |
+| `estimated_symmetry_index` (percent) | ⚠️ → 🔵 **Prototype** | See part 2 |
 | `log_dimensionless_jerk` | ✅ | Implemented |
 | Age-matched Z-score | ❌ | No reference data |
 
@@ -85,10 +85,10 @@ This table is the heart of the project.
 
 | Specification item | Status | Notes |
 |--------------------|--------|-------|
-| **Data quality guard** — reject when `valid_frame_ratio < 0.70` or `mean_conf < 0.60` | 🔵 **P0** | **The most important gap.** We currently flag and still return numbers. This is a genuine safety issue, not a cosmetic one |
-| `assessment_status: "rejected"` with `rejection_reason` | 🔵 **P0** | Adopted in the new contract |
-| Confidence = `0.40·frames + 0.40·confidence + 0.20·tracking_stability` | 🔵 **P0** | Currently a 0.5 / 0.5 blend |
-| `tracking_stability_score` | 🔵 **P0** | Does not exist. Must be defined — intended meaning is frame-to-frame steadiness of the skeleton |
+| **Data quality guard** — reject when `valid_frame_ratio < 0.70` or `mean_conf < 0.60` | 🔵 **Prototype** | **The most important gap.** We currently flag and still return numbers. This is a genuine safety issue, not a cosmetic one |
+| `assessment_status: "rejected"` with `rejection_reason` | 🔵 **Prototype** | Adopted in the new contract |
+| Confidence = `0.40·frames + 0.40·confidence + 0.20·tracking_stability` | 🔵 **Prototype** | Currently a 0.5 / 0.5 blend |
+| `tracking_stability_score` | 🔵 **Prototype** | Does not exist. Must be defined — intended meaning is frame-to-frame steadiness of the skeleton |
 | `valid_frame_ratio`, `mean_keypoint_confidence` | ✅ | Both computed |
 | `missing_joint_ratio` | ❌ | Straightforward to add alongside the confidence work |
 | `lighting_score` | ❌ | Frame brightness measurement already exists for board diagnostics and could be reused |
@@ -104,12 +104,12 @@ This table is the heart of the project.
 
 | Specification item | Status | Notes |
 |--------------------|--------|-------|
-| Knee ROM MCID +5.0 degrees | 🔵 **P4** | In scope. The one MCID that does not depend on the screening layer |
+| Knee ROM MCID +5.0 degrees | 🔵 **Prototype** | In scope. The one MCID that does not depend on the screening layer |
 | Gait speed MCID +0.10 m/s | ⛔ | Depends on gait speed |
 | 5-STS MCID −2.00 s | ⛔ | Depends on 5-STS |
 | TUG MCID −2.08 to −3.40 s | ⛔ | Depends on TUG |
-| `baseline_comparison` with dates | 🔵 **P4** | Our progress endpoint |
-| `mcid_evaluation` with `clinical_recovery_status` | 🔵 **P4** | Our `verdict` field |
+| `baseline_comparison` with dates | 🔵 **Prototype** | Our progress endpoint |
+| `mcid_evaluation` with `clinical_recovery_status` | 🔵 **Prototype** | Our `verdict` field |
 | `recovery_slope_per_month` | ❌ | Needs three or more sessions. Natural extension once history exists |
 | `patient_metadata` — gender, age, BMI | ⚠️ | **Deliberate divergence.** We store only a patient identifier. Age would be needed for the Z-score; gender and BMI only matter for calf circumference, which is out of scope |
 | `data_governance` block — retention days, compliance statement | ⚠️ | **Different approach, same intent.** We do not describe retention policy in the response; we simply never store video. Only derived numbers persist |
@@ -128,8 +128,8 @@ Worth stating explicitly, because a gap list read alone gives an unfairly negati
 | **SPARC smoothness** | A second, independent smoothness measure alongside LDLJ |
 | **Annotated skeleton video** | Lets a human verify the system tracked the right person — the single most useful sanity check available |
 | **3D motion simulation with muscle overlay** | Visual inspection and patient explanation |
-| **Angle trajectories and graphs** (planned) | The specification reports only summary values; we keep the whole movement |
-| **Angular velocity and acceleration** (planned) | Not in the specification, but they distinguish restricted movement from merely cautious movement |
+| **Angle trajectories and graphs** | The specification reports only summary values; we keep and plot the whole movement |
+| **Angular velocity and acceleration** (prototype phase) | Not in the specification, but they distinguish restricted movement from merely cautious movement |
 | **Bone-length metric scale** (prototype phase) | Our answer to calibration burden, postponed past the PoC — the ChArUco board provides scale today. The specification does not address how metric scale is obtained |
 | **Per-task ROM screening thresholds** | Gives a per-movement risk indicator where the specification only classifies at the screening layer |
 | **General-population end goal** | Advisor's direction (2026-08-04): the specification targets elderly sarcopenia screening, but the final goal is a movement-analysis tool usable with anyone. See `01-specification.md` section 1.4 |
@@ -172,25 +172,5 @@ claim the system works, but not that it is accurate.
 
 ---
 
-## 9. Keeping this document honest
-
-- Update it at the end of every phase in [04-planning.md](04-planning.md).
-- When an item moves to ✅, state where it is implemented.
-- When something is declined, record it as ⛔ **with the reason** — never delete the row. A gap list
-  that quietly loses entries stops being trustworthy.
-
----
-
-## Related documents
-
-| Document | Purpose |
-|----------|---------|
-| [00-glossary.md](00-glossary.md) | Definitions of every term used |
-| [01-specification.md](01-specification.md) | What the project is and why |
-| [02-pipeline.md](02-pipeline.md) | Patient workflow and the technical data pipeline |
-| [03-api-contract.md](03-api-contract.md) | Request and response formats |
-| [04-planning.md](04-planning.md) | Phases, tasks, risk, effort, benefit |
-| [05-user-manual.md](05-user-manual.md) | How to perform, record, and interpret each task |
-| [06-setup.md](06-setup.md) | Installation and running the application |
-| [07-evaluation-and-limitations.md](07-evaluation-and-limitations.md) | Accuracy, validation, and honest limits |
-| **08-spec-alignment.md** | *This document* |
+When updating this document: never delete a declined row — record it as ⛔ with the reason. A gap
+list that quietly loses entries stops being trustworthy.

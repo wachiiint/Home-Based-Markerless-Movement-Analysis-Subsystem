@@ -5,8 +5,9 @@
 > Terms are defined in [00-glossary.md](00-glossary.md). The reasoning behind these choices is in
 > [01-specification.md](01-specification.md).
 
-**Status markers.** Not every stage described here is built yet. Built stages are marked ✅ and
-planned stages ⚠️, with delivery scheduled in [04-planning.md](04-planning.md).
+**Status markers.** Not every stage described here is built. Built stages are marked ✅; stages
+marked ⚠️ are designed but carried into the prototype phase — see
+[04-planning.md](04-planning.md) part 4.
 
 ---
 
@@ -173,30 +174,16 @@ Ankle tasks are computed in 2D, because the 3D skeleton has no toe joint. See
 
 ## Stage 8b — Reject outlier frames ✅
 
-The pose estimator occasionally assigns the left keypoints to the right limb for a few frames. The
-skeleton still looks plausible, so no confidence threshold catches it, but the angle series jumps to
-the other leg's angle and back. Because ROM is a maximum minus a minimum, **one such frame is enough
-to corrupt it** — and ROM is what drives screening.
+The pose estimator occasionally swaps left and right keypoints for a few frames. The skeleton still
+looks plausible, so no confidence threshold catches it — but ROM is a maximum minus a minimum, so
+**one such frame is enough to corrupt it**. Each angle is therefore compared against a short window
+of its neighbours in time (a Hampel filter), and a value that disagrees with its own neighbourhood
+far more than the local noise justifies is replaced by the local median. Genuine peaks survive
+because the protocol asks for three or more repetitions, so real extremes are visited repeatedly.
 
-Each angle is therefore compared against a short window of its neighbours in time (a Hampel filter:
-local median, local spread). A value that disagrees with its own neighbourhood far more than the
-local noise justifies is replaced by that local median. The protocol asks for at least three
-repetitions per clip, so genuine extremes are visited repeatedly — a value that appears once and
-reverts is an artefact, not movement.
-
-The test is *local* rather than over the whole clip: a real sweep is meant to have a wide spread, so
-a whole-series test would either reject the genuine peaks or nothing at all. A steady sweep passes
-through untouched.
-
-Outliers are replaced rather than deleted, keeping the series evenly spaced — smoothness
-differentiates the series and assumes a fixed timestep.
-
-**Limit.** A mistrack lasting longer than the window becomes the local median itself and passes. When
-more than 10% of a leg's frames need repair, the response says so (`heavy_tracking_noise`) instead of
-presenting the cleaned numbers as sound. Catching sustained mistracking needs a geometric left/right
-consistency check on the keypoints, which is not built.
-
-Tunable via `OUTLIER_WINDOW_SEC`, `OUTLIER_N_SIGMA`, and `OUTLIER_MIN_SCALE_DEG`.
+**Limit.** A mistrack lasting longer than the window passes through. When more than 10% of a leg's
+frames need repair, the response says so (`heavy_tracking_noise`) instead of presenting the cleaned
+numbers as sound. Tunable via `OUTLIER_WINDOW_SEC`, `OUTLIER_N_SIGMA`, and `OUTLIER_MIN_SCALE_DEG`.
 
 ## Stage 9 — Smooth the angle series ✅
 
@@ -241,32 +228,16 @@ diagnosis.
 | Motion simulation | 3D joint positions plus the muscle overlay | ✅ |
 | 2D keypoint sequence | Raw Halpe26 pixel coordinates and confidences per sampled frame, with skeleton edges | ✅ |
 
-**All five artifacts can be downloaded from the demo UI's `03 / ANALYSIS` panel.** They are stored
-under `data/sessions/` and kept, so the session can be reopened from the interface's history list
-later — downloading is about getting a copy off this machine, not rescuing something before it
-expires. The uploaded clip itself is deleted as soon as the analysis returns.
+**All five artifacts can be downloaded from the interface's `03 / ANALYSIS` panel.** They are stored
+under `data/sessions/` and kept, so the session can be reopened from the history list later. The
+uploaded clip itself is deleted as soon as the analysis returns.
 
-The three data artifacts come in **two formats, for two different jobs**:
-
-| Format | For | Shape | Offered in the UI? |
-|--------|-----|-------|--------------------|
-| **CSV** | Reading in a spreadsheet | One row per frame, three columns per joint. Metrics as a flat `metric,value` table | ✅ a download button each |
-| **JSON** | The complete record | Everything CSV cannot express | ⚠️ served, but by URL in the response only — no button |
-
-CSV is a **lossy view, not a second copy**. It drops the skeleton bone list, the analysis settings, and
-the nesting — so it cannot replay a run. A frame with no detected subject keeps its row with `detected`
-at 0 and its coordinate cells **empty rather than zero**, because a zero would read as a real position
-at the origin. The CSVs are generated per request from the stored JSON, so only one copy is on disk.
-
-The **2D keypoint sequence** is the odd one out: it is the *input* to Stages 6 through 13 rather than a
-picture of the output. Everything downstream of Stage 5 is a pure function of this sequence plus the
-settings, so a saved file replays a run whose video is gone — which matters, because Stage 14 stores
-metrics only and never keeps the video. Undetected frames are kept as nulls to preserve time alignment,
-and the settings that change the numbers (sample rate, confidence threshold, smoothing, outlier
-rejection) travel inside the file so a replay under a different `.env` cannot silently disagree.
-
-Reading a saved sequence back into the pipeline is **not built** — the files are written and downloadable,
-but nothing imports them yet.
+Data artifacts come in two formats: **CSV** for reading in a spreadsheet (a download button each),
+and **JSON** as the complete record (served by URL in the response). CSV is a lossy view — it drops
+the skeleton topology and the analysis settings, so it cannot replay a run. The **2D keypoint
+sequence** JSON is special: everything downstream of Stage 5 is a pure function of it plus the
+settings it carries, so a saved file can replay a run whose video is gone. Reading a saved sequence
+back in is **not built** — export only.
 
 ## Stage 14 — Store the result ⚠️
 
@@ -338,19 +309,3 @@ authoritative as a valid one, which is what makes it dangerous.
 
 By default the most recent recording of each side or date is used; a clinician may name two specific
 sessions instead.
-
----
-
-## Related documents
-
-| Document | Purpose |
-|----------|---------|
-| [00-glossary.md](00-glossary.md) | Definitions of every term used |
-| [01-specification.md](01-specification.md) | What the project is and why |
-| **02-pipeline.md** | *This document* |
-| [03-api-contract.md](03-api-contract.md) | Request and response formats |
-| [04-planning.md](04-planning.md) | Phases, tasks, risk, effort, benefit |
-| [05-user-manual.md](05-user-manual.md) | How to perform, record, and interpret each task |
-| [06-setup.md](06-setup.md) | Installation and running the application |
-| [07-evaluation-and-limitations.md](07-evaluation-and-limitations.md) | Accuracy, validation, and honest limits |
-| [08-spec-alignment.md](08-spec-alignment.md) | Status against the advisor's specification |

@@ -43,6 +43,7 @@ document to see what is being built next.
 | 07 | [Evaluation & Limitations](docs2/07-evaluation-and-limitations.md) | Accuracy, validation, and what we can honestly claim |
 | 08 | [Spec Alignment](docs2/08-spec-alignment.md) | Status against the advisor's specification |
 | 09 | [Calibration Board](docs2/09-calibration-board-optional.md) | The PoC's camera-calibration and metric-scale path |
+| 10 | [PoC Conclusion](docs2/10-poc-conclusion.md) | **The result of this round in one read — start here** |
 
 Source material: [Project101_Team5.md](docs2/Project101_Team5.md) is the original project proposal and
 clinical requirement.

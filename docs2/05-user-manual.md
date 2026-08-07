@@ -422,19 +422,3 @@ knee ROM, an improvement of about 5 degrees is the point where the change become
 | Ankle result looks wrong | Shoes, or the foot too small in frame | Bare feet; move the phone closer while keeping the leg visible |
 | Symmetry unavailable | Only one leg has been recorded | Record the same task on the other leg |
 | Symmetry says not comparable | Different task, view, or too long between the recordings | Record both legs in the same session with the same setup |
-
----
-
-## Related documents
-
-| Document | Purpose |
-|----------|---------|
-| [00-glossary.md](00-glossary.md) | Definitions of every term used |
-| [01-specification.md](01-specification.md) | What the project is and why |
-| [02-pipeline.md](02-pipeline.md) | Patient workflow and the technical data pipeline |
-| [03-api-contract.md](03-api-contract.md) | Request and response formats |
-| [04-planning.md](04-planning.md) | Phases, tasks, risk, effort, benefit |
-| **05-user-manual.md** | *This document* |
-| [06-setup.md](06-setup.md) | Installation and running the application |
-| [07-evaluation-and-limitations.md](07-evaluation-and-limitations.md) | Accuracy, validation, and honest limits |
-| [08-spec-alignment.md](08-spec-alignment.md) | Status against the advisor's specification |

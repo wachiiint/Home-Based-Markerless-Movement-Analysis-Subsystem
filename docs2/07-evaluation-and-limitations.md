@@ -364,19 +364,3 @@ details at source before citing:
 | Agreement analysis method | Bland & Altman, *Lancet* 1986 — the standard method for comparing two measurement techniques |
 | Choosing and reporting ICC | Koo & Li, *J Chiropr Med* 2016 — guideline for reliability studies |
 | Hill-type muscle model limitations | Reviews of numerical instability in Hill-type models |
-
----
-
-## Related documents
-
-| Document | Purpose |
-|----------|---------|
-| [00-glossary.md](00-glossary.md) | Definitions of every term used |
-| [01-specification.md](01-specification.md) | What the project is and why |
-| [02-pipeline.md](02-pipeline.md) | Patient workflow and the technical data pipeline |
-| [03-api-contract.md](03-api-contract.md) | Request and response formats |
-| [04-planning.md](04-planning.md) | Phases, tasks, risk, effort, benefit |
-| [05-user-manual.md](05-user-manual.md) | How to perform, record, and interpret each task |
-| [06-setup.md](06-setup.md) | Installation and running the application |
-| **07-evaluation-and-limitations.md** | *This document* |
-| [08-spec-alignment.md](08-spec-alignment.md) | Status against the advisor's specification |

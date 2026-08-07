@@ -12,11 +12,13 @@ is a summary and will drift. The authoritative documents are:
 
 | Question | Document |
 |----------|----------|
+| **What did this project achieve? Start here** | **`docs2/10-poc-conclusion.md`** |
 | What is this project and why? | `docs2/01-specification.md` |
 | What does a term mean? | `docs2/00-glossary.md` |
 | How does it work, stage by stage? | `docs2/02-pipeline.md` |
 | What are the request and response formats? | `docs2/03-api-contract.md` |
-| **What should I work on next?** | **`docs2/04-planning.md`** |
+| What remains, and what carries to the prototype? | `docs2/04-planning.md` |
+| How do I use the calibration board? | `docs2/09-calibration-board-optional.md` |
 | How does a patient use it? | `docs2/05-user-manual.md` |
 | How do I install and run it? | `docs2/06-setup.md` |
 | How accurate is it, and what can we claim? | `docs2/07-evaluation-and-limitations.md` |
@@ -87,7 +89,7 @@ motion simulation.
   it. A mismatched pair — different patient, task, view, or two clips of the same leg — is **refused**,
   not reported. **No threshold and no verdict**, and none until the test–retest repeatability study
   says how much of a gap is filming noise. The old single-clip `symmetry_index_score` is still in the
-  analysis response and is still wrongly scoped; it is superseded and slated for removal in P4.
+  analysis response and is still wrongly scoped; it is superseded and slated for removal.
   The page also carries the angle graph — one line per leg, each from its own clip, on a shared axis
   but **not a shared clock** (the caveat is printed under the chart) — and the 3D viewer, which shows
   **one recording at a time** behind a left/right selector rather than overlaying the two skeletons.
@@ -111,7 +113,7 @@ motion simulation.
   (`DEMO_RESULT_TTL_SECONDS=0`); the TTL is a setting, not a deleted code path. The **uploaded clip is
   never stored**; the annotated render is, unless `KEEP_ANNOTATED_VIDEO=false`. This file store **is**
   the storage — the once-planned SQLite layer was cancelled on 2026-08-07.
-  **Progress comparison between sessions is not built** — the asymmetry half of P4 has shipped (see
+  **Progress comparison between sessions is not built** — the asymmetry half has shipped (see
   above); comparing a session against an earlier baseline of the same leg has not.
 - **FAKE_MODE.** Contract-shaped response without inference; used by tests.
 

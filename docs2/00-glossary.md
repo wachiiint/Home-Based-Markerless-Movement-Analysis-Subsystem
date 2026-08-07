@@ -103,18 +103,10 @@ Terms are grouped by the world they come from:
 | **Endpoint** | One specific address in an API that performs one job, such as analysing a video or querying symmetry. |
 | **Request / response** | The message sent to an endpoint, and the message sent back. |
 | **JSON** | The text format used for responses. Readable by both people and programs. |
-| **Contract** | The agreed structure of requests and responses. Changing it without coordination breaks whatever depends on it. |
-| **FastAPI** | The Python web framework used to build the local service. |
 | **Localhost** | The local machine itself. A localhost application is reachable only from the computer it runs on. |
-| **SQLite** | A small database that lives in a single local file and needs no server. Was considered for session history, but the project settled on plain local files instead (2026-08-07). |
-| **Stateless / stateful** | Whether a system remembers anything between requests. Analysis is stateless with respect to comparison; storage makes history possible. |
 | **Session** | One completed assessment: one patient, one task, one side, one recording, and the metrics derived from it. |
 | **Fallback** | Producing a simpler but still valid result when the preferred path fails — here, returning the 2D result when 3D cannot be trusted. |
-| **Graceful degradation** | The general principle behind fallback: reduce capability rather than fail entirely. |
 | **Guard** | A check that stops bad data from proceeding. Some guards reject a result; some reject the whole recording. |
-| **Regression test** | An automatic test that proves previously working behaviour still works after a change. |
-| **pytest** | The testing tool used in this project. |
-| **Three.js** | The JavaScript library that renders the 3D motion simulation in the browser. |
 
 ---
 
@@ -141,19 +133,3 @@ Terms are grouped by the world they come from:
 | **Muscle overlay** | A visualisation of how muscles stretch and shorten during the movement, derived from joint geometry. Display only — not force, not activation. |
 | **Comparability guard** | The check that two recordings may legitimately be compared: same task, same view, both of adequate quality. Prevents reporting a symmetry or progress figure built from mismatched recordings. |
 | **Analysis mode** | Which path produced the result, 2D or 3D. Always reported, so a reader knows which applies. |
-
----
-
-## Related documents
-
-| Document | Purpose |
-|----------|---------|
-| **00-glossary.md** | *This document* |
-| [01-specification.md](01-specification.md) | What the project is and why |
-| [02-pipeline.md](02-pipeline.md) | Patient workflow and the technical data pipeline |
-| [03-api-contract.md](03-api-contract.md) | Request and response formats |
-| [04-planning.md](04-planning.md) | Phases, tasks, risk, effort, benefit |
-| [05-user-manual.md](05-user-manual.md) | How to perform, record, and interpret each task |
-| [06-setup.md](06-setup.md) | Installation and running the application |
-| [07-evaluation-and-limitations.md](07-evaluation-and-limitations.md) | Accuracy, validation, and honest limits |
-| [08-spec-alignment.md](08-spec-alignment.md) | Status against the advisor's specification |
