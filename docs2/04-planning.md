@@ -18,6 +18,9 @@ notes record what was built and why, and its unbuilt items are the candidate lis
 
 **Remaining work to close the PoC** (implementation owned by the team):
 
+- The **ChArUco board stays** as the camera-calibration and metric-scale path. **Bone-length scaling
+  is postponed to the prototype phase** — its design and reasoning are kept in
+  [01-specification.md](01-specification.md) section 6.4 for the next proposal.
 - Storage stays as **local files, plus export and re-import** (options B + D). SQLite is cancelled.
 - The interface separates into three clear steps: camera calibration, video upload, analysis.
 - The analysis view shows metrics, the angle graph, and the 3D model, and can compare against the
@@ -42,7 +45,7 @@ gathering, possible model training for better keypoint extraction, a more solid 
 | 3D lifting and motion simulation with muscle overlay | ✅ Built, unreliable — see P3 |
 | Symmetry across two recordings, one clip per leg | ✅ Built — `/compare` page and `GET /api/demo/compare`, no threshold yet |
 | Symmetry inside a single clip (`symmetry_index_score`) | ⚠️ Still in the response and still wrongly scoped — superseded, remove in P4 |
-| ChArUco board calibration | ✅ Built, being demoted to optional |
+| ChArUco board calibration | ✅ Built and staying — the PoC's calibration and scale path (2026-08-07) |
 | Quality **rejection** | ❌ Flags only, does not reject |
 | Angle trajectory in the response, and the graph in the interface | ✅ Built |
 | Storing results and reopening a past session | ✅ Built — file store, now the permanent choice (section 0) |
@@ -130,13 +133,13 @@ gives the application memory.
       append-only `index.jsonl`; `GET /api/demo/sessions` lists them and `GET /api/demo/sessions/{id}`
       reopens one in the shape a fresh analysis returns. The remaining SQLite work is the index layer over
       these rows, not a rewrite of them. See [03-api-contract.md](03-api-contract.md) part 8.1.*
-- [ ] **Patient record endpoints, with bone lengths per side** — 2 d · low · where the scale reference lives
-- [ ] **Bone-length metric scale** — 2 d · medium · removes printing, calibration clips, and resolution matching
+- [ ] **Patient record endpoints, with bone lengths per side** — *postponed to the prototype phase (2026-08-07)*
+- [ ] **Bone-length metric scale** — *postponed to the prototype phase (2026-08-07)*
 - [x] **Store every completed session** — 1 d · low · required by every comparison
       *Every completed analysis is stored and kept. Rejected sessions cannot be stored yet because the
       rejection guard itself is P0 work and does not exist.*
-- [ ] **Demote the ChArUco board to optional** — 1 d · low · keeps floor and 6DoF; removes it from the scale path
-- [ ] **Bone-length entry in the interface** — 1 d · low · one form, filled once per patient
+- [ ] ~~**Demote the ChArUco board to optional**~~ **Cancelled 2026-08-07** — the board stays as the calibration and scale path for the PoC
+- [ ] **Bone-length entry in the interface** — *postponed to the prototype phase (2026-08-07)*
 
 **Watch for:** hospital bone measurements use anatomical landmarks while the model uses joint
 centres, so expect a systematic offset of a few percent. Use bone length only as a scaling *ratio*
@@ -232,7 +235,7 @@ in either order. P3 needs bone lengths from P2. P4 needs storage from P2 and tra
 | **CT muscle data (Team 6)** | Another team's work. Integration is possible later; nothing here depends on it |
 | **Cloud portal for remote review** | Would let a doctor read results without sitting at the machine, but brings real privacy obligations. The contract stays integration-ready so this remains possible |
 | **ROM thresholds for non-elderly patients** | The current per-task thresholds were confirmed by the clinician for **elderly** patients (2026-08-04). The end goal is use with anyone, so other populations need their own reviewed values before the risk levels can be trusted for them |
-| **MRI import of bone lengths** | Raised by the advisor (2026-08-04). Manual entry in P2 comes first; where a patient already has a scan, importing the lengths from it would remove the typing step |
+| **MRI import of bone lengths** | Raised by the advisor (2026-08-04). Manual entry comes first — now prototype-phase work; where a patient already has a scan, importing the lengths from it would remove the typing step |
 
 ---
 

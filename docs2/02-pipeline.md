@@ -19,7 +19,7 @@ Done once when a patient joins the programme, not before every recording.
 | Step | What happens | Why |
 |------|--------------|-----|
 | Record patient ID | The clinician assigns an identifier such as `PT-001` | Links recordings to the same person over time. No name or address is needed |
-| Measure bone lengths ⚠️ | Femur and tibia are measured at the hospital, **for each leg separately** | Converts the 3D reconstruction to real millimetres. Per side, because leg length can genuinely differ |
+| Measure bone lengths ⚠️ *(prototype phase)* | Femur and tibia are measured at the hospital, **for each leg separately** | Will convert the 3D reconstruction to real millimetres. Per side, because leg length can genuinely differ. Until then, metric scale comes from the ChArUco board ([09-calibration-board-optional.md](09-calibration-board-optional.md)) |
 
 ## A2. Preparing to record
 
@@ -141,13 +141,17 @@ the reconstructed femur or tibia varies significantly from frame to frame, the r
 wrong and is discarded. This check is what currently rejects many real recordings, sending them to
 the 2D path described in Part C.
 
-**Bone-length constrained refinement** ⚠️ will use the patient's known bone lengths to correct the
-reconstruction rather than only judge it, which is expected to make this stage far more reliable.
+**Bone-length constrained refinement** ⚠️ *(prototype phase)* will use the patient's known bone
+lengths to correct the reconstruction rather than only judge it, which is expected to make this stage
+far more reliable.
 
-## Stage 7 — Apply metric scale ⚠️
+## Stage 7 — Apply metric scale
 
-The 3D reconstruction has correct shape but arbitrary size. Dividing the patient's known bone length
-in millimetres by the same bone's reconstructed length gives the conversion factor to real units.
+The 3D reconstruction has correct shape but arbitrary size. Today the conversion factor to real
+units comes from the **ChArUco board calibration**
+([09-calibration-board-optional.md](09-calibration-board-optional.md)). In the prototype phase ⚠️,
+dividing the patient's known bone length in millimetres by the same bone's reconstructed length will
+give the factor instead, with no board involved.
 
 Joint **angles do not need this** — an angle is the same whatever the scale. Scale matters for
 distances, so a recording without bone lengths still produces valid angles and ROM.

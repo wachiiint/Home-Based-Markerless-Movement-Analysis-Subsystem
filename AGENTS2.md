@@ -93,7 +93,9 @@ motion simulation.
   **one recording at a time** behind a left/right selector rather than overlaying the two skeletons.
 - **Optional 3D.** MotionBERT ONNX lift, 3D hip and knee angles, metric scale, camera-to-floor transform. Best-effort: any failure falls back to 2D and reports the mode. **Frequently falls back in practice.**
 - **Optional ChArUco calibration.** Per-device intrinsics and per-session floor plane. Runs from its
-  own UI page at `/calibrate` (or the `calibrate_device` CLI), not from the analysis page. Being demoted to optional in P2 — bone length replaces it as the scale source.
+  own UI page at `/calibrate` (or the `calibrate_device` CLI), not from the analysis page. **Staying
+  as the PoC's calibration and metric-scale path** (2026-08-07) — the earlier plan to demote it in
+  favour of bone lengths is postponed to the prototype phase.
 - **Muscle overlay.** Five muscle groups per leg on the 3D skeleton, coloured by a kinematic length proxy. Display only — never force or activation.
 - **Artifact export from the demo UI.** The `03 / ANALYSIS` panel offers the assessment metrics, the
   plotted angle series, the raw 2D keypoint sequence (Halpe26 pixel coords, scores, skeleton edges, plus the settings needed to replay
@@ -151,7 +153,7 @@ Do not relitigate these without a reason. Full reasoning is in `docs2/01-specifi
 | Decision | Choice |
 |----------|--------|
 | Target population | **Elderly sarcopenia screening first; final goal is anyone** (advisor, 2026-08-04). ROM thresholds are confirmed for the elderly only — other populations are a backlog item |
-| Metric scale | Hospital-measured **bone lengths**, per side. Manual entry first; MRI import is a backlog item. The ChArUco board is demoted to optional |
+| Metric scale | **ChArUco board for the PoC** (re-adopted 2026-08-07). Hospital-measured bone lengths per side move to the prototype phase; MRI import stays in the backlog |
 | 2D versus 3D | **3D-first as the target**; 2D sagittal is the validated path running today. Report which produced the result |
 | Deployment | **Standalone localhost**, with the response kept integration-ready for a future backend |
 | Project phase | **Proof of concept, concluding** (2026-08-07). Demonstrated: camera-only movement analysis for tele-rehabilitation. Next: a prototype-phase proposal mixing the PoC summary with the professor's proposal (IMU ground truth, keypoint model training, a more solid application) |

@@ -42,7 +42,7 @@ document to see what is being built next.
 | 06 | [Setup](docs2/06-setup.md) | Install and run the application |
 | 07 | [Evaluation & Limitations](docs2/07-evaluation-and-limitations.md) | Accuracy, validation, and what we can honestly claim |
 | 08 | [Spec Alignment](docs2/08-spec-alignment.md) | Status against the advisor's specification |
-| 09 | [Calibration Board](docs2/09-calibration-board-optional.md) | Optional, being superseded by bone-length scale |
+| 09 | [Calibration Board](docs2/09-calibration-board-optional.md) | The PoC's camera-calibration and metric-scale path |
 
 Source material: [Project101_Team5.md](docs2/Project101_Team5.md) is the original project proposal and
 clinical requirement.

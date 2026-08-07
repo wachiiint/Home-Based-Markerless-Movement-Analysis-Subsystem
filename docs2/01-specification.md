@@ -111,7 +111,7 @@ trust each result.
 | O1 | Measure joint angles and ROM for hip, knee, and ankle tasks | Angles computed for every frame; ROM derived from the angle series |
 | O2 | Quantify movement quality beyond ROM | Angular velocity, acceleration, and smoothness reported per session |
 | O3 | Grade recording quality and refuse bad data | A quality guard that rejects unusable clips rather than returning misleading numbers |
-| O4 | Remove calibration burden from the patient | Metric scale obtained without printed markers or a separate calibration recording |
+| O4 | Remove calibration burden from the patient *(prototype phase)* | Metric scale obtained without printed markers or a separate calibration recording. The PoC uses the ChArUco board |
 | O5 | Present results visually, not only numerically | Time-series graph, annotated skeleton video, and 3D motion simulation with muscle overlay |
 | O6 | Compare across recordings | Left leg against right leg for limb symmetry, and today against an earlier baseline for clinically meaningful change |
 
@@ -225,7 +225,7 @@ and knee results.
 - Per-frame joint angles and the metrics derived from them
 - Angular velocity, acceleration, and movement smoothness
 - Recording-quality assessment with the authority to reject a clip
-- Metric scale derived from patient-specific bone lengths
+- Metric scale from ChArUco board calibration (bone-length scale is prototype-phase work)
 - Limb symmetry, computed by comparing left and right recordings of the same task
 - Comparison against a prior baseline with a meaningful-change verdict
 - Visual output: time-series graph, annotated skeleton video, and 3D motion simulation with muscle
@@ -285,12 +285,16 @@ also what makes the 3D motion simulation possible.
    5.2.
 
 The system therefore attempts 3D, falls back to 2D whenever 3D cannot be trusted, and always reports
-which path produced the result. Planned work on bone-length scaling and constrained refinement
-([04-planning.md](04-planning.md)) exists specifically to make the 3D path dependable enough to lead
+which path produced the result. Bone-length scaling and constrained refinement — now prototype-phase
+work (Section 1.5) — exist specifically to make the 3D path dependable enough to lead
 with. Until it is, **the 3D output is the least-validated component of the system** and is documented
 as such.
 
-### 6.4 Patient-specific bone lengths for metric scale
+### 6.4 Patient-specific bone lengths for metric scale — postponed to the prototype phase
+
+> **Status (2026-08-07):** postponed. For the proof of concept, the **ChArUco board** remains the
+> camera-calibration and metric-scale source — it is built and working. Bone-length scaling below is
+> the **prototype-phase design**, kept here with its reasoning for the next proposal.
 
 A 3D reconstruction from a single camera has no inherent size — a small person close to the lens and
 a large person far away produce identical images. Converting to millimetres requires an external
@@ -302,7 +306,7 @@ units yields the scale factor. Manual entry is the primary route; importing the 
 imaging such as MRI, where a scan already exists, was raised by the advisor and sits in the backlog
 in [04-planning.md](04-planning.md).
 
-This replaces an earlier approach using a printed calibration board. The reasons:
+In the prototype phase this will replace the printed calibration board. The reasons:
 
 - **No burden on the patient.** No printing, no separate calibration recording, no resolution
   matching, no device registry.
@@ -376,7 +380,7 @@ failing the whole request.
 | Pose estimation | Runs RTMPose per frame; selects the main subject when several people are present |
 | Pose sequence | Collects whole-clip 2D poses so later stages see the full movement, not isolated frames |
 | 3D lifting | Converts the 2D sequence to 3D joint positions; guards reject an inconsistent reconstruction |
-| Scaling | Converts arbitrary 3D units to millimetres using patient bone lengths |
+| Scaling | Converts arbitrary 3D units to millimetres using the ChArUco board calibration (bone lengths in the prototype phase) |
 | Kinematics | Computes the joint angle for each frame and smooths the resulting series |
 | Metrics | Derives ROM, angular velocity and acceleration, and smoothness from the angle series |
 | Quality grading | Scores recording quality and rejects clips below the floor |

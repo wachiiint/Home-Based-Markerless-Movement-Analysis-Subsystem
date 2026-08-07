@@ -86,10 +86,10 @@ Terms are grouped by the world they come from:
 | **ONNX** | A portable file format for trained AI models, letting a model run without its original training framework. |
 | **Inference** | Running a trained model on new data to get a prediction — as opposed to training it. |
 | **Metric scale** | The conversion factor from the reconstruction's arbitrary units to real millimetres. Without it, a 3D pose has correct shape but unknown size. |
-| **Bone-length scaling** | Obtaining metric scale by dividing a known real bone length in millimetres by the same bone's reconstructed length in arbitrary units. The approach chosen by this project. |
+| **Bone-length scaling** | Obtaining metric scale by dividing a known real bone length in millimetres by the same bone's reconstructed length in arbitrary units. Planned for the prototype phase; the proof of concept uses the ChArUco board. |
 | **Camera intrinsics** | A camera's internal properties, chiefly focal length and lens distortion. Needed for geometric measurement in the image. |
 | **Camera extrinsics** | Where the camera sits and how it is oriented relative to the scene. |
-| **ChArUco board** | A printed pattern combining a chessboard with ArUco markers, used for camera calibration. Optional in this project since bone-length scaling replaced it as the scale source. |
+| **ChArUco board** | A printed pattern combining a chessboard with ArUco markers, used for camera calibration. The proof of concept's calibration and metric-scale source. |
 | **Floor plane** | The mathematical description of where the floor is in the camera's view. |
 | **6DoF** | Six Degrees of Freedom — three of position and three of rotation. The full description of one coordinate frame relative to another. |
 

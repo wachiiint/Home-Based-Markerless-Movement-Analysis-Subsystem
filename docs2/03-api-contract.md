@@ -521,7 +521,7 @@ needs the MCID verdict work.
 | Trajectories | Computed then discarded | Returned in `trajectory` — *already shipped on the current response* |
 | Velocity, acceleration | Absent | In `metrics` |
 | History | None | Local file store, enabling symmetry and progress. *Ships today — see part 8.1* |
-| Calibration board | Primary scale source | Optional; bone length is primary |
+| Calibration board | Primary scale source | Stays primary for the PoC; bone length moves to the prototype phase |
 
 **The rejection guard is the one behaviour change a caller must handle.** Everything else is additive
 or a rename; a caller that previously received numbers for a poor recording will now receive a

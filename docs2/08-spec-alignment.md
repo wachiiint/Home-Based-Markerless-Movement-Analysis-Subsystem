@@ -130,7 +130,7 @@ Worth stating explicitly, because a gap list read alone gives an unfairly negati
 | **3D motion simulation with muscle overlay** | Visual inspection and patient explanation |
 | **Angle trajectories and graphs** (planned) | The specification reports only summary values; we keep the whole movement |
 | **Angular velocity and acceleration** (planned) | Not in the specification, but they distinguish restricted movement from merely cautious movement |
-| **Bone-length metric scale** (planned) | Our answer to calibration burden. The specification does not address how metric scale is obtained |
+| **Bone-length metric scale** (prototype phase) | Our answer to calibration burden, postponed past the PoC — the ChArUco board provides scale today. The specification does not address how metric scale is obtained |
 | **Per-task ROM screening thresholds** | Gives a per-movement risk indicator where the specification only classifies at the screening layer |
 | **General-population end goal** | Advisor's direction (2026-08-04): the specification targets elderly sarcopenia screening, but the final goal is a movement-analysis tool usable with anyone. See `01-specification.md` section 1.4 |
 

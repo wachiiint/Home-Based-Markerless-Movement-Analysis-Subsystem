@@ -1,13 +1,13 @@
-# 09 — Calibration Board Protocol (optional, legacy)
+# 09 — Calibration Board Protocol
 
-> ⚠️ **Optional and being superseded.** This describes the ChArUco board path, which is how metric
-> scale works *today*. Per [01-specification.md](01-specification.md) section 6.4, hospital-measured
-> **bone lengths** replace the board as the scale source in P2 of
-> [04-planning.md](04-planning.md), after which the board is needed only for the floor plane and the
-> camera-to-floor transform. Most users will never need this document.
+> **Current again (2026-08-07).** The board was briefly slated for replacement by hospital-measured
+> bone lengths, but that swap is **postponed to the prototype phase** — for the proof of concept the
+> ChArUco board is the camera-calibration and metric-scale path, and this document is how to use it.
+> The bone-length design and its reasoning are kept in [01-specification.md](01-specification.md)
+> section 6.4.
 >
 > Joint angles, ROM, smoothness, and screening are **scale-invariant** and never require the board.
-> Follow this only when you specifically need distances in millimetres before P2 lands.
+> Follow this only when you need distances in millimetres or the metric 3D output.
 
 How to take a device from "uncalibrated" to producing metric 3D output, and how
 to record a patient clip so the metric-3D path actually engages. This is the
