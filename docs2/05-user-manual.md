@@ -7,6 +7,8 @@
 > and the reference values. Treat it as the script, not the artwork.
 > Illustrations still needed: the camera setup diagram, and one figure per pose showing the starting
 > position and the direction of movement.
+> The instruction wording is also under review: the doctor will check recorded example videos and
+> suggest more universal phrasing (raised 2026-08-04, tracked in [04-planning.md](04-planning.md)).
 
 > For the person recording and reading the assessment: a clinician, a caretaker, or the patient.
 > No technical knowledge assumed. Terms are defined in [00-glossary.md](00-glossary.md).

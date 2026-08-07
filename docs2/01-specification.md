@@ -40,6 +40,18 @@ statement of how much the recording can be trusted.
 
 It is deliberately **not** a diagnosis system. It produces the numbers a clinician uses to decide.
 
+### 1.4 Who the system is for
+
+The measurement itself is not specific to any disease or age group. A joint angle, a range of
+motion, or a smoothness score means the same thing for a young adult recovering from knee surgery as
+for an eighty-year-old at risk of sarcopenia.
+
+**Sarcopenia screening in the elderly is the first use case and shaped the current design. The final
+goal is a movement-analysis tool usable with anyone.** What is tuned to the elderly today is the
+*interpretation* layer: the per-task ROM thresholds behind each risk level were confirmed by the
+supervising clinician for elderly patients, and have not been reviewed for other populations.
+Widening them is tracked in the backlog in [04-planning.md](04-planning.md).
+
 ---
 
 ## 2. Overview
@@ -133,7 +145,8 @@ a result from this system must never be presented as if it were one.
 ## 4. Clinical framework
 
 Assessment of an at-risk patient happens in three layers. Separating them clarifies exactly what this
-project delivers and what it deliberately leaves to others.
+project delivers and what it deliberately leaves to others. The framework below is written for the
+sarcopenia use case; the assessment layer itself applies to any patient (Section 1.4).
 
 | Layer | Purpose | Typical output | In this project |
 |-------|---------|----------------|-----------------|
@@ -273,7 +286,9 @@ reference.
 
 The chosen reference is a **hospital-measured bone length** (femur and tibia, per side), entered once
 by the patient. Dividing the known length in millimetres by the reconstructed length in arbitrary
-units yields the scale factor.
+units yields the scale factor. Manual entry is the primary route; importing the lengths from medical
+imaging such as MRI, where a scan already exists, was raised by the advisor and sits in the backlog
+in [04-planning.md](04-planning.md).
 
 This replaces an earlier approach using a printed calibration board. The reasons:
 

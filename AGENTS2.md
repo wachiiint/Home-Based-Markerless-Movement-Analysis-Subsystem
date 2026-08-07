@@ -28,10 +28,11 @@ is a summary and will drift. The authoritative documents are:
 
 ## What this service is
 
-A local FastAPI service for home-based markerless movement analysis, aimed at sarcopenia screening
-support. A patient records a short clip of one prescribed leg movement; the service returns joint
-angles, ROM, smoothness, quality metrics, and a screening indicator, plus an annotated skeleton video
-and a 3D motion simulation.
+A local FastAPI service for home-based markerless movement analysis. Sarcopenia screening in the
+elderly is the first use case; the final goal is a movement-analysis tool usable with anyone. A
+patient records a short clip of one prescribed leg movement; the service returns joint angles, ROM,
+smoothness, quality metrics, and a screening indicator, plus an annotated skeleton video and a 3D
+motion simulation.
 
 **Decision support, not diagnosis.** Runs entirely locally.
 
@@ -149,7 +150,8 @@ Do not relitigate these without a reason. Full reasoning is in `docs2/01-specifi
 
 | Decision | Choice |
 |----------|--------|
-| Metric scale | Hospital-measured **bone lengths**, per side. The ChArUco board is demoted to optional |
+| Target population | **Elderly sarcopenia screening first; final goal is anyone** (advisor, 2026-08-04). ROM thresholds are confirmed for the elderly only — other populations are a backlog item |
+| Metric scale | Hospital-measured **bone lengths**, per side. Manual entry first; MRI import is a backlog item. The ChArUco board is demoted to optional |
 | 2D versus 3D | **3D-first as the target**; 2D sagittal is the validated path running today. Report which produced the result |
 | Deployment | **Standalone localhost**, with the response kept integration-ready for a future backend |
 | History storage | **SQLite**, local, metrics only — never video |

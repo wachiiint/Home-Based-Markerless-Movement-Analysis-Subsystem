@@ -209,6 +209,8 @@ in either order. P3 needs bone lengths from P2. P4 needs storage from P2 and tra
 | **OpenSim kinematics export** | Scientifically interesting, one to three weeks, and absent from the advisor's specification. Confirm it is wanted before starting |
 | **CT muscle data (Team 6)** | Another team's work. Integration is possible later; nothing here depends on it |
 | **Cloud portal for remote review** | Would let a doctor read results without sitting at the machine, but brings real privacy obligations. The contract stays integration-ready so this remains possible |
+| **ROM thresholds for non-elderly patients** | The current per-task thresholds were confirmed by the clinician for **elderly** patients (2026-08-04). The end goal is use with anyone, so other populations need their own reviewed values before the risk levels can be trusted for them |
+| **MRI import of bone lengths** | Raised by the advisor (2026-08-04). Manual entry in P2 comes first; where a patient already has a scan, importing the lengths from it would remove the typing step |
 
 ---
 
@@ -231,7 +233,8 @@ A phase is complete when all of the following hold.
 |----------|-------------|--------|
 | How many days may separate two sides of one symmetry comparison? Default is 30 (`ASYMMETRY_MAX_DAYS_APART`), and exceeding it warns rather than refuses, precisely because nobody has decided | The clinician | Nothing — the comparison ships without the answer |
 | What asymmetry counts as abnormal? Nothing is claimed today | The repeatability study first, then the clinician | The asymmetry threshold |
-| Are the per-task expected and borderline ROM values clinically right? | The clinician | Nothing now, but they drive every risk level |
+| ~~Are the per-task expected and borderline ROM values clinically right?~~ **Answered 2026-08-04: yes, for elderly patients.** Values for other populations are a backlog item | — | Resolved |
+| Are the movement instruction phrases universal enough? Awaiting the doctor's review of recorded example videos | The clinician | Nothing now — reword in [05-user-manual.md](05-user-manual.md) once reviewed |
 | Is the OpenSim export still wanted? | The advisor | Backlog |
 | Should rejected recordings be visible in patient history, or hidden? | The clinician | P2 |
 

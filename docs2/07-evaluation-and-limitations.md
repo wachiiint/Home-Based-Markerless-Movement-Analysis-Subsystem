@@ -143,7 +143,7 @@ reference data the project does not have.
 | Knee ROM MCID +5 degrees | Advisor's specification ✔ | From which population and which measurement method? |
 | TUG ≥ 12 s | Shumway-Cook et al. ✔ (DOI: 10.1093/ptj/80.9.896) | A **fall-risk** measure, not a sarcopenia criterion — see section 10 |
 | Limb symmetry > 10 % | Advisor's specification, described as a research biomarker ✔ | Largely derived from sports and ACL rehabilitation. Is it right for elderly patients? |
-| Per-task expected and borderline ROM | **This project's own convention** | No published source. See section 6 |
+| Per-task expected and borderline ROM | **This project's own convention** | Confirmed clinically sensible **for elderly patients** by the supervising clinician (2026-08-04). Other populations remain unreviewed — see the backlog in [04-planning.md](04-planning.md). See section 6 |
 
 ### 4.7 Muscle modelling was correctly excluded
 
@@ -265,9 +265,11 @@ Questions the team cannot answer alone. Grouped by what they would change.
 
 ### Thresholds and interpretation
 
-1. Are the expected and borderline ROM values in section 6 clinically sensible for elderly patients?
-   If not, what values would you use?
-2. Should thresholds vary by age, sex, or body size, or is one value per task acceptable?
+1. ~~Are the expected and borderline ROM values in section 6 clinically sensible for elderly
+   patients?~~ **Answered 2026-08-04: yes, for elderly patients.** Values for other populations are
+   still open — see question 2.
+2. Should thresholds vary by age, sex, or body size, or is one value per task acceptable? This
+   matters more now that the end goal is use with any patient, not only the elderly.
 3. For a seated knee-flexion test specifically, what ROM would you expect from a healthy 75-year-old,
    and what would concern you?
 4. Is `max − min` the right summary, or do you care whether the patient reaches a **specific**
