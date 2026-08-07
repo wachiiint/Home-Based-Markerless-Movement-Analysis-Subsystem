@@ -9,6 +9,27 @@ for one person. Risk is the chance it takes longer than estimated or breaks some
 
 ---
 
+## 0. Direction change — 2026-08-07
+
+The project now **concludes as a proof of concept** (see [01-specification.md](01-specification.md)
+section 1.5). What it demonstrates: a camera alone can record and analyse a patient's movement for
+tele-rehabilitation. The P0–P4 plan below is **no longer the roadmap** — it is kept because its task
+notes record what was built and why, and its unbuilt items are the candidate list for the next phase.
+
+**Remaining work to close the PoC** (implementation owned by the team):
+
+- Storage stays as **local files, plus export and re-import** (options B + D). SQLite is cancelled.
+- The interface separates into three clear steps: camera calibration, video upload, analysis.
+- The analysis view shows metrics, the angle graph, and the 3D model, and can compare against the
+  patient's stored history.
+- One project summary a newcomer can read end to end.
+
+**What comes after:** a new proposal for the **prototype phase** — engineered deliberately, with
+human review — combining this PoC's summary with the professor's proposal (IMU ground-truth data
+gathering, possible model training for better keypoint extraction, a more solid application).
+
+---
+
 ## 1. Where the project stands
 
 | Capability | Status |
@@ -24,7 +45,7 @@ for one person. Risk is the chance it takes longer than estimated or breaks some
 | ChArUco board calibration | ✅ Built, being demoted to optional |
 | Quality **rejection** | ❌ Flags only, does not reject |
 | Angle trajectory in the response, and the graph in the interface | ✅ Built |
-| Storing results and reopening a past session | ✅ Built — file store, ahead of the SQLite layer |
+| Storing results and reopening a past session | ✅ Built — file store, now the permanent choice (section 0) |
 | Bone-length scale, velocity, comparisons between sessions | ❌ Not built |
 
 **The honest summary:** the measurement core works, and results are now kept rather than discarded.
@@ -101,7 +122,8 @@ thrown away; keeping them unlocks the graph, velocity, and later the progress co
 The architectural centre of the plan. Replaces the printed board with a number typed in once, and
 gives the application memory.
 
-- [ ] **SQLite storage layer** — 3 d · medium · foundation for patient records and all history
+- [ ] ~~**SQLite storage layer**~~ **Cancelled 2026-08-07** — the file store below is the storage,
+      full stop; see section 0
       *Partly delivered ahead of schedule as a **file-backed store** (`services/session_store.py`), because
       a proof-of-concept demo needed results to survive a restart. Analyses are written to
       `data/sessions/<patient_id>/<timestamp>-<session_id>/` and summarised one row per session in an

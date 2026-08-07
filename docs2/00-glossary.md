@@ -106,7 +106,7 @@ Terms are grouped by the world they come from:
 | **Contract** | The agreed structure of requests and responses. Changing it without coordination breaks whatever depends on it. |
 | **FastAPI** | The Python web framework used to build the local service. |
 | **Localhost** | The local machine itself. A localhost application is reachable only from the computer it runs on. |
-| **SQLite** | A small database that lives in a single local file and needs no server. The recommended storage for session history. |
+| **SQLite** | A small database that lives in a single local file and needs no server. Was considered for session history, but the project settled on plain local files instead (2026-08-07). |
 | **Stateless / stateful** | Whether a system remembers anything between requests. Analysis is stateless with respect to comparison; storage makes history possible. |
 | **Session** | One completed assessment: one patient, one task, one side, one recording, and the metrics derived from it. |
 | **Fallback** | Producing a simpler but still valid result when the preferred path fails — here, returning the 2D result when 3D cannot be trusted. |

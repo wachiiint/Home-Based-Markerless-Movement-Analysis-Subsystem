@@ -219,7 +219,7 @@ adds them — see [04-planning.md](04-planning.md).
 
 | Planned work | New setup step |
 |--------------|----------------|
-| SQLite storage (P2) | A database file is created on first run. Its location becomes a setting, and backing it up means copying one file |
+| Export and re-import of results | A saved result file can be opened again from the interface. Backing up history means copying the `data/sessions/` folder |
 | Bone-length patient records (P2) | Each patient's measurements are entered once through the interface before metric 3D works for them |
 | Calibration board becomes optional (P2) | The board printing and device calibration steps disappear from normal use |
 

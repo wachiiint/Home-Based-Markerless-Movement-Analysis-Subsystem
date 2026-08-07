@@ -107,15 +107,15 @@ motion simulation.
   lists them, `GET /api/demo/sessions/{id}` reopens one in the same payload shape a fresh analysis
   returns, so past and new results render through one code path. Nothing expires
   (`DEMO_RESULT_TTL_SECONDS=0`); the TTL is a setting, not a deleted code path. The **uploaded clip is
-  never stored**; the annotated render is, unless `KEEP_ANNOTATED_VIDEO=false`. This ships ahead of the
-  SQLite layer in P2, which will index these rows rather than replace them.
+  never stored**; the annotated render is, unless `KEEP_ANNOTATED_VIDEO=false`. This file store **is**
+  the storage — the once-planned SQLite layer was cancelled on 2026-08-07.
   **Progress comparison between sessions is not built** — the asymmetry half of P4 has shipped (see
   above); comparing a session against an earlier baseline of the same leg has not.
 - **FAKE_MODE.** Contract-shaped response without inference; used by tests.
 
-**Not built:** bone-length input and scale, angular velocity and
-acceleration, the hard-reject quality guard, `tracking_stability_score`, the SQLite index over the
-stored sessions, and the comparison endpoints. All scheduled in `docs2/04-planning.md`.
+**Not built:** bone-length input and scale, angular velocity and acceleration, the hard-reject
+quality guard, `tracking_stability_score`, re-import of exported results, and comparison against a
+patient's own history. See `docs2/04-planning.md` section 0 for what still closes the PoC.
 
 **Empty by design:** `gait_parameters` and `compensation`.
 
@@ -154,7 +154,8 @@ Do not relitigate these without a reason. Full reasoning is in `docs2/01-specifi
 | Metric scale | Hospital-measured **bone lengths**, per side. Manual entry first; MRI import is a backlog item. The ChArUco board is demoted to optional |
 | 2D versus 3D | **3D-first as the target**; 2D sagittal is the validated path running today. Report which produced the result |
 | Deployment | **Standalone localhost**, with the response kept integration-ready for a future backend |
-| History storage | **SQLite**, local, metrics only — never video |
+| Project phase | **Proof of concept, concluding** (2026-08-07). Demonstrated: camera-only movement analysis for tele-rehabilitation. Next: a prototype-phase proposal mixing the PoC summary with the professor's proposal (IMU ground truth, keypoint model training, a more solid application) |
+| History storage | **Local files plus export/re-import** (options B + D, 2026-08-07). SQLite cancelled — the file store under `data/sessions/` is the storage. Metrics and renders only, never the uploaded clip |
 | Symmetry and progress | **Separate query endpoints** over stored results, never computed inside an analysis response |
 | Screening layer (5-STS, gait speed, TUG) | **Out of scope** this round |
 | CT muscle data | Team 6's work. Out of scope now, not blocked for later |

@@ -439,16 +439,14 @@ Failures of the *request* are HTTP errors. Failures of the *recording* are `200`
 
 ## 8. Storage
 
-**SQLite**, one local file. It ships with Python, needs no server, and the whole history is one file
-to back up or delete.
+**Local files, plus export and re-import** (decision of 2026-08-07 — see
+[01-specification.md](01-specification.md) section 7.5). Each session is a small folder of
+human-readable JSON on the local disk; the whole history is one directory to back up or delete. The
+earlier SQLite plan is cancelled — a database earns its keep at hundreds of sessions, and a proof of
+concept never gets there.
 
-| Table | Holds |
-|-------|-------|
-| `patients` | `patient_id`, bone lengths, measurement date |
-| `sessions` | `session_id`, `patient_id`, task, side, view, date, status, quality, metrics JSON, trajectory JSON |
-
-**Only derived numbers are stored — never video, never images.** Videos live in a temporary folder
-during analysis and are deleted when the request finishes.
+**The uploaded video is never stored.** It lives in a temporary folder during analysis and is
+deleted when the request finishes. The annotated render may be kept (`KEEP_ANNOTATED_VIDEO`).
 
 **Every attempt is stored, including rejected ones.** Rejected sessions are excluded from comparison
 but kept, so a clinician can see that three attempts were made. Choosing between several good takes
@@ -457,9 +455,9 @@ counts.
 
 ### 8.1 What is built today — the file-backed store
 
-The SQLite layer above is P2. Shipping ahead of it is a **file store**, so results already survive a
-restart and a past session can be reopened. It is the same data in a simpler container, and P2 reads
-these rows in rather than replacing them.
+The file store already exists and is the permanent storage. Results survive a restart and a past
+session can be reopened. What remains is **re-import**: opening a result file that was exported from
+another machine.
 
 ```
 data/sessions/
@@ -522,7 +520,7 @@ needs the MCID verdict work.
 | Naming | `knee_rom_deg` | `estimated_knee_rom_deg` |
 | Trajectories | Computed then discarded | Returned in `trajectory` — *already shipped on the current response* |
 | Velocity, acceleration | Absent | In `metrics` |
-| History | None | SQLite, enabling symmetry and progress. *A file-backed store ships today — see part 8.1* |
+| History | None | Local file store, enabling symmetry and progress. *Ships today — see part 8.1* |
 | Calibration board | Primary scale source | Optional; bone length is primary |
 
 **The rejection guard is the one behaviour change a caller must handle.** Everything else is additive

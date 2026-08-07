@@ -52,6 +52,18 @@ goal is a movement-analysis tool usable with anyone.** What is tuned to the elde
 supervising clinician for elderly patients, and have not been reviewed for other populations.
 Widening them is tracked in the backlog in [04-planning.md](04-planning.md).
 
+### 1.5 Project phase: proof of concept
+
+An application grows through three engineering phases: **proof of concept**, then **prototype**, then
+**deployment**. This round of the project is the proof of concept, and it is concluding. What it set
+out to demonstrate, it has: **a camera alone can record and analyse a patient's movement for
+tele-rehabilitation** — no markers, no wearables, no special hardware.
+
+The next round is the prototype: rebuilt deliberately, with human-reviewed engineering rather than
+exploratory code. Its plan will be a new proposal that combines this proof of concept's summary with
+the professor's proposal of 2026-08-07 — ground-truth data gathering with IMU sensors, possible
+model training for better keypoint extraction from video, and a more solid application.
+
 ---
 
 ## 2. Overview
@@ -408,13 +420,12 @@ several options:
 | **D. Export and re-import** | The clinician saves a small result file after each session and uploads it alongside the next recording | Application still stores nothing; the clinician holds the data | Depends on the clinician not losing the file; poor experience |
 | **E. Cloud or clinician portal** | Sessions are stored on a server that clinicians can access remotely (Team1's work) | Enables remote review and multi-clinician access | Requires infrastructure and introduces real privacy and data-protection obligations |
 
-**Recommendation: option C**, with option E deliberately left possible for later. SQLite ships with
-Python, needs no server, keeps everything in one local file that can be backed up or deleted in one
-action, and stores only derived numbers rather than video or images. Option B is a reasonable simpler
-starting point if the team prefers to see the data as plain text while developing.
-
-This decision is finalised in [03-api-contract.md](03-api-contract.md) and scheduled in
-[04-planning.md](04-planning.md).
+**Decision (2026-08-07): options B and D together, for ease of use.** The file store that exists
+today already is option B — each session is a small folder of human-readable JSON files on the local
+disk, trivial to back up, copy, or delete. Option D adds export and re-import on top, so a result can
+be saved as a file and opened again elsewhere. SQLite (option C) is **cancelled for this round**: a
+database earns its keep at hundreds of sessions and a proof of concept never gets there. Option E
+stays deliberately possible for later.
 
 **Patient identity.** Whichever option is chosen, sessions are keyed by a patient identifier supplied
 by the clinician. The application does not need names, addresses, or any other identifying detail,
