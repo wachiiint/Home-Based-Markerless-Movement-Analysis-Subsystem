@@ -1,5 +1,6 @@
 import { mountViewer } from '/static/viewer3d.js';
 import { buildSamplePose3dPayload } from '/static/sample_skeleton.js';
+import { drawAngleChart, SIDE_COLOR, label } from '/static/anglechart.js';
 
 const form = document.querySelector('#analysis-form');
 const fileInput = document.querySelector('#file');
@@ -7,6 +8,19 @@ const fileName = document.querySelector('#file-name');
 const sourceVideo = document.querySelector('#source-video');
 const resultVideo = document.querySelector('#result-video');
 const emptyState = document.querySelector('#empty-state');
+
+// A session recorded before the H.264 switch is MPEG-4 Part 2, which no browser
+// decodes. The file is still good in a desktop player, so say that instead of
+// leaving a dead player on screen.
+resultVideo.addEventListener('error', () => {
+  if (!resultVideo.getAttribute('src')) return;
+  const videoMessage = document.querySelector('#video-message');
+  videoMessage.textContent = 'This browser cannot play the stored render. Sessions recorded before the H.264 switch — and any run on a machine without an H.264 encoder — are MPEG-4 Part 2, which browsers do not decode. Download it below to watch it in a desktop player, or re-run the analysis on an up-to-date server to get a playable render.';
+  videoMessage.hidden = false;
+  resultVideo.hidden = true;
+  emptyState.querySelector('p').textContent = 'The render for this session is not playable in the browser.';
+  emptyState.hidden = false;
+});
 const metricsSection = document.querySelector('#metrics-section');
 const submitButton = document.querySelector('#submit-button');
 const message = document.querySelector('#form-message');
@@ -96,7 +110,6 @@ loadDevices();
 // up in the picker above on the next load of this page.
 
 const percent = (value) => `${(Number(value) * 100).toFixed(0)}%`;
-const label = (key) => key.replaceAll('_', ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 
 // Both legs are reported: joint_angles keys are side-prefixed (left_/right_) and
 // smoothness is nested per side. Render one Left|Right row per metric so the
@@ -148,38 +161,6 @@ const trajectoryChart = document.querySelector('#trajectory-chart');
 const trajectoryLegend = document.querySelector('#trajectory-legend');
 const trajectoryReadout = document.querySelector('#trajectory-readout');
 
-// Viewbox units, not pixels: the SVG is scaled to the panel width. The wide
-// aspect keeps the graph from towering over the table it sits under, and keeps
-// the axis text near its nominal size once scaled.
-const CHART = { w: 1000, h: 280, left: 56, right: 18, top: 18, bottom: 36 };
-const SIDE_COLOR = { left: '#16764f', right: '#2f6fb9' };
-
-// Round the angle axis outwards to a readable step, so the gridline labels are
-// whole numbers rather than whatever the extremes happened to be.
-function niceAxis(min, max) {
-  const span = Math.max(max - min, 5);
-  const step = [1, 2, 5, 10, 20, 25, 50].find((s) => span / s <= 6) || 100;
-  return { lo: Math.floor(min / step) * step, hi: Math.ceil(max / step) * step, step };
-}
-
-// A null means the leg was not confidently visible in that frame. The line
-// breaks there instead of bridging the gap, which would draw movement that was
-// never measured.
-function segments(values, toX, toY) {
-  const paths = [];
-  let current = [];
-  values.forEach((value, index) => {
-    if (value == null) {
-      if (current.length > 1) paths.push(current);
-      current = [];
-      return;
-    }
-    current.push(`${toX(index).toFixed(1)},${toY(value).toFixed(1)}`);
-  });
-  if (current.length > 1) paths.push(current);
-  return paths;
-}
-
 // The graph is an extra reading of numbers the panel already shows, so it must
 // never be able to hide them: anything it throws (a stale cached page without
 // the chart markup, a shape we did not expect) costs the graph, not the result.
@@ -196,115 +177,29 @@ function drawTrajectory(assessment) {
   if (!trajectoryBlock || !trajectoryChart) return;
   const trajectory = assessment.trajectory;
   const time = trajectory?.time_sec || [];
-  const series = ['left', 'right']
-    .map((side) => ({ side, values: trajectory?.[`${side}_angle_deg`] }))
-    .filter((s) => Array.isArray(s.values));
-  if (!time.length || !series.length) {
-    trajectoryBlock.hidden = true;
-    return;
-  }
-  trajectoryBlock.hidden = false;
-
   const instructed = assessment.video_metadata.analyzed_side;
-  const finite = series.flatMap((s) => s.values.filter((v) => v != null));
-  const axis = niceAxis(Math.min(...finite), Math.max(...finite));
-  const { w, h, left, right, top, bottom } = CHART;
-  const plotW = w - left - right;
-  const plotH = h - top - bottom;
-  const lastTime = time[time.length - 1] || 1;
-  const toX = (index) => left + (time[index] / lastTime) * plotW;
-  const toY = (angle) => top + (1 - (angle - axis.lo) / (axis.hi - axis.lo)) * plotH;
+  // Both legs of one clip, so both lines share this clip's time axis. The
+  // instructed leg is drawn solid and the contralateral one dashed, because only
+  // the first was screened.
+  const series = ['left', 'right']
+    .map((side) => ({
+      key: side,
+      label: `${label(side)}${side === instructed ? ' (instructed)' : ''}`,
+      color: SIDE_COLOR[side],
+      emphasis: side === instructed ? 'primary' : 'reference',
+      time,
+      values: trajectory?.[`${side}_angle_deg`],
+    }))
+    .filter((s) => Array.isArray(s.values));
 
-  let grid = '';
-  for (let angle = axis.lo; angle <= axis.hi + 1e-9; angle += axis.step) {
-    const y = toY(angle).toFixed(1);
-    grid += `<line class="grid-line" x1="${left}" x2="${w - right}" y1="${y}" y2="${y}"></line>`;
-    grid += `<text class="axis-text" x="${left - 8}" y="${y}" text-anchor="end" dominant-baseline="middle">${angle}°</text>`;
-  }
-  // ~8 time labels regardless of clip length.
-  const tickEvery = Math.max(1, Math.round(time.length / 8));
-  let ticks = '';
-  for (let index = 0; index < time.length; index += tickEvery) {
-    ticks += `<text class="axis-text" x="${toX(index).toFixed(1)}" y="${h - bottom + 18}" text-anchor="middle">${time[index].toFixed(1)}s</text>`;
-  }
-
-  const lines = series
-    .map(({ side, values }) => {
-      const emphasis = side === instructed ? 'is-instructed' : 'is-reference';
-      return segments(values, toX, toY)
-        .map((points) => `<polyline class="angle-line ${emphasis}" stroke="${SIDE_COLOR[side]}" points="${points.join(' ')}"></polyline>`)
-        .join('');
-    })
-    .join('');
-
-  const cursors = series
-    .map(({ side }) => `<circle class="cursor-dot" data-side="${side}" r="4" fill="${SIDE_COLOR[side]}" cx="-99" cy="-99"></circle>`)
-    .join('');
-
-  trajectoryChart.innerHTML = `
-    <svg viewBox="0 0 ${w} ${h}" class="trajectory-svg" role="img" aria-label="Joint angle through time">
-      ${grid}${ticks}
-      <line class="axis-line" x1="${left}" x2="${left}" y1="${top}" y2="${h - bottom}"></line>
-      <line class="axis-line" x1="${left}" x2="${w - right}" y1="${h - bottom}" y2="${h - bottom}"></line>
-      ${lines}
-      <line class="cursor-line" x1="-99" x2="-99" y1="${top}" y2="${h - bottom}"></line>
-      ${cursors}
-      <rect class="hover-area" x="${left}" y="${top}" width="${plotW}" height="${plotH}" fill="transparent"></rect>
-    </svg>`;
-
-  trajectoryLegend.innerHTML = series
-    .map(({ side }) => {
-      const note = side === instructed ? ' (instructed)' : '';
-      return `<span class="legend-item"><i style="background:${SIDE_COLOR[side]}"></i>${label(side)}${note}</span>`;
-    })
-    .join('');
-
-  attachTrajectoryHover(series, time, toX, toY, trajectory.joint);
-}
-
-// Reading a single moment off the graph is what turns a shape into a number, so
-// the hover reports the angle of every plotted leg at the frame under the cursor.
-function attachTrajectoryHover(series, time, toX, toY, joint) {
-  const svg = trajectoryChart.querySelector('svg');
-  const cursorLine = svg.querySelector('.cursor-line');
-  const dots = [...svg.querySelectorAll('.cursor-dot')];
-  const idle = 'Hover the graph to read the angle at a moment.';
-  const jointLabel = label(joint.replace(/_deg$/, ''));
-
-  const clear = () => {
-    cursorLine.setAttribute('x1', -99);
-    cursorLine.setAttribute('x2', -99);
-    for (const dot of dots) dot.setAttribute('cx', -99);
-    trajectoryReadout.textContent = idle;
-  };
-
-  svg.addEventListener('pointerleave', clear);
-  svg.addEventListener('pointermove', (event) => {
-    // Map the pointer through the viewBox: the SVG is scaled to the panel width,
-    // so client pixels are not chart units.
-    const box = svg.getBoundingClientRect();
-    const x = ((event.clientX - box.left) / box.width) * CHART.w;
-    let index = 0;
-    for (let i = 1; i < time.length; i += 1) {
-      if (Math.abs(toX(i) - x) < Math.abs(toX(index) - x)) index = i;
-    }
-    const cx = toX(index).toFixed(1);
-    cursorLine.setAttribute('x1', cx);
-    cursorLine.setAttribute('x2', cx);
-    const parts = [];
-    for (const dot of dots) {
-      const value = series.find((s) => s.side === dot.dataset.side).values[index];
-      if (value == null) {
-        dot.setAttribute('cx', -99);
-        parts.push(`${label(dot.dataset.side)} — not tracked`);
-        continue;
-      }
-      dot.setAttribute('cx', cx);
-      dot.setAttribute('cy', toY(value).toFixed(1));
-      parts.push(`${label(dot.dataset.side)} ${value.toFixed(1)}°`);
-    }
-    trajectoryReadout.textContent = `${time[index].toFixed(1)}s · ${jointLabel} · ${parts.join(' · ')}`;
+  const drawn = drawAngleChart({
+    chartEl: trajectoryChart,
+    legendEl: trajectoryLegend,
+    readoutEl: trajectoryReadout,
+    series,
+    jointLabel: label((trajectory?.joint || '').replace(/_deg$/, '')),
   });
+  trajectoryBlock.hidden = !drawn;
 }
 
 // Warnings about the declared side are a data-entry / recording problem, not a
@@ -365,9 +260,9 @@ function renderAnalysisNotice(assessment) {
 // The panel offers the CSV view of each artifact, because that is the one a
 // person opens and reads. The complete JSON record is still served -- its URL
 // travels in the response -- but it is for programs, so it gets no button.
-// The files live in the session's temp folder and are deleted on TTL expiry,
-// so the whole point of these buttons is to save a copy first. Same-origin
-// <a download> is all it takes -- no fetch, no blobs.
+// The files are kept in the local session store, so these buttons are about
+// getting a copy out of this machine rather than rescuing something before it
+// expires. Same-origin <a download> is all it takes -- no fetch, no blobs.
 const exportNote = document.querySelector('#export-note');
 
 // [anchor id, response field, download suffix]
@@ -400,7 +295,9 @@ function renderExports(payload) {
   if (!payload.pose_2d_csv_url) notes.push('2D keypoints unavailable for this run.');
   notes.push('The angle graph CSV is the plotted series itself, one row per sampled frame — the metrics CSV leaves it out to stay readable.');
   notes.push('CSV is one row per frame, for reading — it drops the skeleton bone list and the settings needed to reproduce the run, which only the JSON response carries.');
-  notes.push(`Files expire at ${new Date(payload.expires_at).toLocaleTimeString()}.`);
+  notes.push(payload.expires_at
+    ? `Files expire at ${new Date(payload.expires_at).toLocaleTimeString()}.`
+    : 'Stored on this machine and kept — you can reopen this session from the history list.');
   exportNote.textContent = notes.join(' ');
 }
 
@@ -523,6 +420,52 @@ async function showPose3d(url) {
   }
 }
 
+// One render path for every result, whether it was just produced or reopened from
+// the history list. A stored session is the same payload shape, so a past result
+// is never a second, quietly diverging view of a result.
+async function renderPayload(payload) {
+  const assessment = payload.assessment;
+  const download = document.querySelector('#download-link');
+  const videoMessage = document.querySelector('#video-message');
+  if (payload.annotated_video_url) {
+    videoMessage.hidden = true;
+    resultVideo.src = payload.annotated_video_url;
+    resultVideo.load();
+    resultVideo.hidden = false;
+    emptyState.hidden = true;
+    download.href = payload.annotated_video_url;
+    download.hidden = false;
+  } else {
+    // The render was not kept (KEEP_ANNOTATED_VIDEO off). Every number below is
+    // still real, so say what is missing rather than looking broken.
+    resultVideo.hidden = true;
+    resultVideo.removeAttribute('src');
+    download.hidden = true;
+    emptyState.hidden = false;
+    emptyState.querySelector('p').textContent = 'The annotated video was not kept for this session. The metrics below are unaffected.';
+  }
+  resultState.textContent = payload.recorded_at
+    ? `Recorded ${new Date(payload.recorded_at).toLocaleString()}`
+    : 'Analysis complete';
+
+  const screening = assessment.screening_result;
+  const quality = assessment.clinical_metrics.pose_quality;
+  document.querySelector('#risk-value').textContent = screening.risk_level;
+  document.querySelector('#risk-flags').textContent = screening.flags.length ? screening.flags.join(', ') : 'No flags';
+  document.querySelector('#confidence-value').textContent = percent(screening.confidence_score);
+  document.querySelector('#side-value').textContent = assessment.video_metadata.analyzed_side || '—';
+  document.querySelector('#valid-value').textContent = percent(quality.valid_frame_ratio);
+  document.querySelector('#angle-metrics').innerHTML = renderComparison(assessment.clinical_metrics);
+  // Show the numbers first: everything below is an extra view of a result the
+  // panel already holds, and none of it is worth withholding the result for.
+  metricsSection.hidden = false;
+  renderTrajectory(assessment);
+  renderSideNotice(assessment);
+  renderAnalysisNotice(assessment);
+  renderExports(payload);
+  await showPose3d(payload.pose_3d_url);
+}
+
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   submitButton.disabled = true;
@@ -537,31 +480,10 @@ form.addEventListener('submit', async (event) => {
     const response = await fetch('/api/demo/assess', { method: 'POST', body: data });
     const payload = await response.json();
     if (!response.ok) throw new Error(payload.detail || 'Analysis failed');
-    const assessment = payload.assessment;
-    resultVideo.src = payload.annotated_video_url;
-    resultVideo.load();
-    resultVideo.hidden = false;
-    emptyState.hidden = true;
-    const download = document.querySelector('#download-link');
-    download.href = payload.annotated_video_url;
-    download.hidden = false;
-    resultState.textContent = 'Analysis complete';
-    const screening = assessment.screening_result;
-    const quality = assessment.clinical_metrics.pose_quality;
-    document.querySelector('#risk-value').textContent = screening.risk_level;
-    document.querySelector('#risk-flags').textContent = screening.flags.length ? screening.flags.join(', ') : 'No flags';
-    document.querySelector('#confidence-value').textContent = percent(screening.confidence_score);
-    document.querySelector('#side-value').textContent = assessment.video_metadata.analyzed_side || '—';
-    document.querySelector('#valid-value').textContent = percent(quality.valid_frame_ratio);
-    document.querySelector('#angle-metrics').innerHTML = renderComparison(assessment.clinical_metrics);
-    // Show the numbers first: everything below is an extra view of a result the
-    // panel already holds, and none of it is worth withholding the result for.
-    metricsSection.hidden = false;
-    renderTrajectory(assessment);
-    renderSideNotice(assessment);
-    renderAnalysisNotice(assessment);
-    renderExports(payload);
-    await showPose3d(payload.pose_3d_url);
+    openSessionId = payload.assessment.session_id;
+    await renderPayload(payload);
+    // The run has just been stored, so the list is one entry out of date.
+    loadHistory();
   } catch (error) {
     resultState.textContent = 'Unable to analyze';
     message.textContent = error.message;
@@ -570,3 +492,106 @@ form.addEventListener('submit', async (event) => {
     submitButton.querySelector('span').textContent = 'Analyze movement';
   }
 });
+
+// ---- History -------------------------------------------------------------
+// Every completed analysis is kept in a local store, so a session can be opened
+// again long after the run. This list is the way in. It shows summary rows only
+// -- the full assessment is read from disk when a row is chosen.
+const historyList = document.querySelector('#history-list');
+const historyState = document.querySelector('#history-state');
+const historyAll = document.querySelector('#history-all');
+const historyRefresh = document.querySelector('#history-refresh');
+const patientInput = form.elements.patient_id;
+
+let openSessionId = null;
+
+const TASK_LABELS = {
+  knee_flexion: 'Knee flexion',
+  knee_extension: 'Knee extension',
+  hip_flexion: 'Hip flexion',
+  hip_extension: 'Hip extension',
+  ankle_dorsiflexion: 'Ankle dorsiflexion',
+  ankle_plantarflexion: 'Ankle plantarflexion',
+};
+
+function romText(session) {
+  const rom = session.rom_deg || {};
+  const instructed = session.side;
+  const parts = ['left', 'right']
+    .filter((side) => rom[side] != null)
+    .map((side) => {
+      const mark = side === instructed ? '*' : '';
+      return `${label(side)}${mark} ${Number(rom[side]).toFixed(1)}°`;
+    });
+  return parts.length ? `ROM ${parts.join(' · ')}` : 'ROM —';
+}
+
+function historyRow(session) {
+  const when = session.recorded_at ? new Date(session.recorded_at).toLocaleString() : '—';
+  const task = TASK_LABELS[session.task_type] || label(session.task_type || '');
+  const mode = session.analysis_mode === '3d' ? '3D' : '2D';
+  const open = session.session_id === openSessionId ? ' is-open' : '';
+  const warnings = (session.guard_warnings || []).length;
+  return `
+    <button type="button" class="history-item${open}" data-session="${session.session_id}">
+      <span class="history-when">${when}</span>
+      <span class="history-main">
+        <strong>${task}</strong>
+        <small>${session.patient_id || '—'} · ${label(session.side || '—')} · ${mode}${warnings ? ` · ${warnings} warning${warnings > 1 ? 's' : ''}` : ''}</small>
+      </span>
+      <span class="history-rom">${romText(session)}</span>
+      <span class="risk-chip risk-${session.risk_level}">${session.risk_level}</span>
+    </button>`;
+}
+
+async function loadHistory() {
+  const patientId = patientInput.value.trim();
+  const scoped = !historyAll.checked && patientId;
+  const query = scoped ? `?patient_id=${encodeURIComponent(patientId)}` : '';
+  try {
+    const response = await fetch('/api/demo/sessions' + query);
+    if (!response.ok) throw new Error('could not read stored sessions');
+    const { sessions } = await response.json();
+    if (!sessions.length) {
+      historyList.innerHTML = `<p class="history-empty">${scoped ? `No stored sessions for ${patientId} yet.` : 'No stored sessions yet.'}</p>`;
+    } else {
+      historyList.innerHTML = sessions.map(historyRow).join('');
+    }
+    historyState.textContent = `${sessions.length} stored${scoped ? ` · ${patientId}` : ''}`;
+  } catch (error) {
+    console.error(error);
+    historyList.innerHTML = '<p class="history-empty">Stored sessions could not be read.</p>';
+    historyState.textContent = 'unavailable';
+  }
+}
+
+async function openSession(sessionId) {
+  message.textContent = '';
+  resultState.textContent = 'Opening stored session…';
+  stopPlayback();
+  viewerSection.hidden = true;
+  try {
+    const response = await fetch(`/api/demo/sessions/${encodeURIComponent(sessionId)}`);
+    const payload = await response.json();
+    if (!response.ok) throw new Error(payload.detail || 'Could not open that session');
+    openSessionId = sessionId;
+    await renderPayload(payload);
+    for (const item of historyList.querySelectorAll('.history-item')) {
+      item.classList.toggle('is-open', item.dataset.session === sessionId);
+    }
+    metricsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (error) {
+    resultState.textContent = 'Unable to open';
+    message.textContent = error.message;
+  }
+}
+
+historyList.addEventListener('click', (event) => {
+  const item = event.target.closest('.history-item');
+  if (item) openSession(item.dataset.session);
+});
+historyRefresh.addEventListener('click', loadHistory);
+historyAll.addEventListener('change', loadHistory);
+patientInput.addEventListener('change', loadHistory);
+
+loadHistory();

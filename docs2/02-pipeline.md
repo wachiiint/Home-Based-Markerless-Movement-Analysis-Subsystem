@@ -237,8 +237,10 @@ diagnosis.
 | Motion simulation | 3D joint positions plus the muscle overlay | ✅ |
 | 2D keypoint sequence | Raw Halpe26 pixel coordinates and confidences per sampled frame, with skeleton edges | ✅ |
 
-**All five artifacts can be downloaded from the demo UI's `03 / ANALYSIS` panel.** They live in the
-session's temporary folder and are deleted on TTL expiry, so downloading is the only way to keep them.
+**All five artifacts can be downloaded from the demo UI's `03 / ANALYSIS` panel.** They are stored
+under `data/sessions/` and kept, so the session can be reopened from the interface's history list
+later — downloading is about getting a copy off this machine, not rescuing something before it
+expires. The uploaded clip itself is deleted as soon as the analysis returns.
 
 The three data artifacts come in **two formats, for two different jobs**:
 

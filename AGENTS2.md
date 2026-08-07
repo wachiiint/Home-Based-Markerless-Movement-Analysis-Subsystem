@@ -45,16 +45,21 @@ and a 3D motion simulation.
 - `app/schemas/` — request enums (`movement.py`) and response models (`response.py`).
 - `app/services/video_io.py`, `video_analysis.py`, `response_mapper.py` — frame sampling, the analysis orchestrator, response assembly.
 - `app/services/csv_export.py` — flat CSV views of the export payloads.
+- `app/services/session_store.py` — the local store of completed analyses under `data/sessions/`.
 - `app/services/pose/` — `pose_estimator.py` (RTMPose via rtmlib), `pose_sequence.py`, `subject_selector.py`, `pose2d_export.py`.
-- `app/services/analysis/` — `kinematics.py`, `smoothing.py`, `screening.py`, `smoothness.py`, `symmetry.py`.
+- `app/services/analysis/` — `kinematics.py`, `smoothing.py`, `screening.py`, `smoothness.py`, `symmetry.py` (single-clip, superseded), `asymmetry.py` (across two recordings).
+- `app/services/asymmetry_report.py` — the seam between the session store and `analysis/asymmetry.py`.
 - `app/services/calibration/` — ChArUco board handling: rendering, detection, intrinsics/extrinsics, device store, print verification, diagnostics, floor transform, per-session calibration.
 - `app/services/lifting/` — Halpe26 to H36M17 conversion, normalisation, `Lifter` protocol with `MotionBertAdapter` and `StubLifter`, `pipeline.py`, 3D angles, metric scale, guards, muscle overlay, viewer export.
 - `app/models/` — Halpe26 keypoint constants, task configuration, calibration models.
 - `app/tools/` — CLIs: `generate_board`, `calibrate_device`, `extract_gait2392_muscles`.
 - `app/utils/math_utils.py` — angle and vector helpers.
 - `app/static/` — browser interface. `index.html`/`app.js` is the analysis page (upload, results,
-  3D viewer with muscle overlay); `calibrate.html`/`calibrate.js` is the separate `/calibrate` page.
-- `tests/` — 149 tests covering the API contract, kinematics, lifting, calibration, muscles, smoothness, symmetry, trajectory, exports.
+  3D viewer with muscle overlay); `calibrate.html`/`calibrate.js` is the separate `/calibrate` page;
+  `compare.html`/`compare.js` is the `/compare` page, which picks two stored sessions and reads the
+  difference between the legs. `anglechart.js` is the angle-through-time graph, shared by both pages;
+  `viewer3d.js` is the 3D skeleton renderer, likewise.
+- `tests/` — 192 tests covering the API contract, kinematics, lifting, calibration, muscles, smoothness, symmetry, asymmetry, trajectory, exports, session storage.
 
 ---
 
@@ -73,7 +78,18 @@ and a 3D motion simulation.
   visible. It is the same series min/max/ROM were read from, so the graph and the numbers agree. The
   demo UI plots it as inline SVG (no chart library) with a hover readout, and offers it as its own
   per-frame CSV; the metrics CSV deliberately leaves it out.
-- **Symmetry.** Implemented, but scoped to a single clip — which is the wrong basis. Being rebuilt as a cross-recording comparison in P4.
+- **Asymmetry across two recordings.** One clip per leg, each contributing **only** the leg it was
+  instructed to move — the far leg in a lateral view is occluded and foreshortened, so pairing it
+  against the near leg measures camera distance as much as the patient. `GET /api/demo/compare` and
+  its own `/compare` page. Uses the Zifchock symmetry angle (bounded ±50%, no reference leg needed —
+  in bilateral decline there is no sound limb to divide by) and reports the plain difference beside
+  it. A mismatched pair — different patient, task, view, or two clips of the same leg — is **refused**,
+  not reported. **No threshold and no verdict**, and none until the test–retest repeatability study
+  says how much of a gap is filming noise. The old single-clip `symmetry_index_score` is still in the
+  analysis response and is still wrongly scoped; it is superseded and slated for removal in P4.
+  The page also carries the angle graph — one line per leg, each from its own clip, on a shared axis
+  but **not a shared clock** (the caveat is printed under the chart) — and the 3D viewer, which shows
+  **one recording at a time** behind a left/right selector rather than overlaying the two skeletons.
 - **Optional 3D.** MotionBERT ONNX lift, 3D hip and knee angles, metric scale, camera-to-floor transform. Best-effort: any failure falls back to 2D and reports the mode. **Frequently falls back in practice.**
 - **Optional ChArUco calibration.** Per-device intrinsics and per-session floor plane. Runs from its
   own UI page at `/calibrate` (or the `calibrate_device` CLI), not from the analysis page. Being demoted to optional in P2 — bone length replaces it as the scale source.
@@ -83,13 +99,22 @@ and a 3D motion simulation.
   the run), and the 3D skeleton — each as **CSV**, the format a person opens and reads. The complete
   JSON record is still written and served, but its URL travels in the response instead of getting a
   button. CSV is a lossy view generated per request from the stored JSON (`csv_export.py`); it drops
-  topology and settings and so cannot replay a run. All are TTL-deleted server-side, so downloading is the only way to keep them.
-  **Re-importing a saved file is not built** — export only.
+  topology and settings and so cannot replay a run. **Re-importing a saved file is not built** — export only.
+- **Results are stored and kept.** Every completed analysis is written to
+  `data/sessions/<patient_id>/<timestamp>-<session_id>/` and summarised in an append-only
+  `index.jsonl` (`session_store.py`). The demo page has a history list: `GET /api/demo/sessions`
+  lists them, `GET /api/demo/sessions/{id}` reopens one in the same payload shape a fresh analysis
+  returns, so past and new results render through one code path. Nothing expires
+  (`DEMO_RESULT_TTL_SECONDS=0`); the TTL is a setting, not a deleted code path. The **uploaded clip is
+  never stored**; the annotated render is, unless `KEEP_ANNOTATED_VIDEO=false`. This ships ahead of the
+  SQLite layer in P2, which will index these rows rather than replace them.
+  **Progress comparison between sessions is not built** — the asymmetry half of P4 has shipped (see
+  above); comparing a session against an earlier baseline of the same leg has not.
 - **FAKE_MODE.** Contract-shaped response without inference; used by tests.
 
 **Not built:** bone-length input and scale, angular velocity and
-acceleration, the hard-reject quality guard, `tracking_stability_score`, session storage, and the
-comparison endpoints. All scheduled in `docs2/04-planning.md`.
+acceleration, the hard-reject quality guard, `tracking_stability_score`, the SQLite index over the
+stored sessions, and the comparison endpoints. All scheduled in `docs2/04-planning.md`.
 
 **Empty by design:** `gait_parameters` and `compensation`.
 

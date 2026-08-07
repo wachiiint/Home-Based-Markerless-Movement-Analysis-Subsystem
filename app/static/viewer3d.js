@@ -235,7 +235,10 @@ export function mountViewer(container) {
     const width = container.clientWidth;
     const height = container.clientHeight;
     if (!width || !height) return;
-    renderer.setSize(width, height, false);
+    // updateStyle left on: without a CSS size the canvas lays out at its buffer
+    // size (width x devicePixelRatio), so on any scaled display -- 125% Windows
+    // scaling, a HiDPI screen -- it spills outside the panel.
+    renderer.setSize(width, height);
     camera.aspect = width / height;
     camera.updateProjectionMatrix();
   }

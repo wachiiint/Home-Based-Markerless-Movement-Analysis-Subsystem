@@ -82,6 +82,64 @@ class MovementAssessmentResponse(BaseModel):
     guard_warnings: list[str] = Field(default_factory=list)
 
 
+class ComparabilityCheck(BaseModel):
+    """One reason the reader should hesitate. ``blocking`` means no numbers were
+    produced at all; ``warning`` means they were, with a caveat attached."""
+
+    code: str
+    severity: Literal["blocking", "warning"]
+    message: str
+
+
+class AsymmetryMetric(BaseModel):
+    """One quantity, read off each leg's own recording.
+
+    ``difference`` is always left minus right, in the metric's own unit -- the
+    number a clinician can size up directly. ``symmetry_angle_pct`` is the
+    normalised form and is null wherever a ratio would be meaningless (joint
+    angles, and the negative-by-construction smoothness measures).
+    """
+
+    key: str
+    label: str
+    unit: str
+    left: float | None = None
+    right: float | None = None
+    difference: float | None = None
+    symmetry_angle_pct: float | None = None
+    larger_side: str | None = None
+
+
+class ComparedSession(BaseModel):
+    """The stored recording one side of the comparison came from."""
+
+    session_id: str
+    side: str
+    patient_id: str
+    task_type: str
+    view: str
+    recorded_at: str | None = None
+    analysis_mode: str
+    valid_frame_ratio: float
+    guard_warnings: list[str] = Field(default_factory=list)
+
+
+class AsymmetryComparisonResponse(BaseModel):
+    """Left against right, across two recordings -- one clip per leg.
+
+    Deliberately carries **no verdict**. There is no evidence yet for a threshold
+    that separates real asymmetry from the variation between two recordings of the
+    same leg, so this reports the difference and how it was measured, and stops.
+    """
+
+    comparable: bool
+    left: ComparedSession
+    right: ComparedSession
+    days_apart: float | None = None
+    checks: list[ComparabilityCheck] = Field(default_factory=list)
+    metrics: list[AsymmetryMetric] = Field(default_factory=list)
+
+
 class HealthResponse(BaseModel):
     status: Literal["ok"]
     device: Literal["cuda:0", "cpu"]
@@ -91,7 +149,9 @@ class HealthResponse(BaseModel):
 
 class DemoAssessmentResponse(BaseModel):
     assessment: MovementAssessmentResponse
-    annotated_video_url: str
+    # Null when the annotated render was not kept -- see KEEP_ANNOTATED_VIDEO.
+    # The metrics, the graph, and the keypoints below still stand without it.
+    annotated_video_url: str | None = None
     # Download targets for the export row. The JSON form of each artifact is the
     # complete one; the CSV is a flat spreadsheet view that drops the skeleton
     # topology and the replay settings. Nulls mean that run produced no 3D/2D.
@@ -105,4 +165,10 @@ class DemoAssessmentResponse(BaseModel):
     pose_3d_csv_url: str | None = None
     pose_2d_url: str | None = None
     pose_2d_csv_url: str | None = None
-    expires_at: str
+    # Null means the result is stored and will not be deleted, which is the
+    # proof-of-concept default. A timestamp restores the old expiring behaviour.
+    expires_at: str | None = None
+    # Where the result sits in the local store, so a past session can be found
+    # again. Present on stored results; null in fake mode.
+    patient_id: str | None = None
+    recorded_at: str | None = None

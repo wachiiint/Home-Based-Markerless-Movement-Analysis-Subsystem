@@ -305,6 +305,91 @@ the MCID threshold, so ordinary measurement noise is never reported as progress.
 
 ---
 
+### 5.1 What is built today — `GET /api/demo/compare`
+
+The symmetry half of section 5 has shipped, browser-facing, ahead of the `/api/v1` contract. It reads
+two stored sessions and reports the difference between the legs. Its page is `/compare`.
+
+```
+GET /api/demo/compare?left=<session_id>&right=<session_id>
+```
+
+Both ids are required, must differ, and must resolve to sessions whose response named an
+`analyzed_side`. A missing session is `404`; a stored pair that is **not comparable** is `200` with
+`comparable: false` and the blocking checks that say why — "these two cannot be compared, and here is
+the reason" is the useful answer, and the page renders it.
+
+```json
+{
+  "comparable": true,
+  "left":  { "session_id": "rtmpose-…c3", "side": "left",  "task_type": "knee_flexion", "…": "…" },
+  "right": { "session_id": "rtmpose-…g7", "side": "right", "task_type": "knee_flexion", "…": "…" },
+  "days_apart": 2.0,
+  "checks": [ { "code": "camera_setup_unverified", "severity": "warning", "message": "…" } ],
+  "metrics": [
+    { "key": "rom_deg", "label": "Knee ROM", "unit": "°",
+      "left": 88.4, "right": 61.7, "difference": 26.7,
+      "symmetry_angle_pct": 11.2, "larger_side": "left" }
+  ]
+}
+```
+
+**Each recording contributes only the leg it was instructed to move.** The contralateral numbers
+inside a clip stay what they always were — a within-clip reference and a recording check — and never
+become half of an asymmetry index. In a lateral view the far leg is occluded and foreshortened, so
+pairing it against the near leg measures distance from the camera as much as it measures the patient.
+
+Metrics compared: ROM (2D, and 3D when both runs produced it), peak and minimum joint angle, SPARC,
+LDLJ, movement units. Every row carries `difference` (left minus right, in the metric's own unit).
+`symmetry_angle_pct` is populated only for quantities where a ratio means something — ROM and movement
+units. A joint angle is a position on an arbitrary axis and SPARC/LDLJ are negative by construction,
+so those rows are `null` and report the plain difference alone.
+
+`checks` are `blocking` or `warning`. Blocking — different patient, different task, different view,
+two recordings of the same leg, an unrecognised task — produces **no metrics at all**. Everything
+else warns: recorded further apart than `ASYMMETRY_MAX_DAYS_APART` (default 30), differing sample
+rate or analysis mode, low tracking coverage, a leg that barely moved, a possible wrong side, heavy
+tracking noise. One warning is always present — camera distance, height and angle are not recorded
+anywhere, so the service cannot verify two clips were filmed the same way, and a silent pass must not
+read as a verified one.
+
+**Three deliberate differences from the `/api/v1` contract above:**
+
+| `/api/v1/comparisons/symmetry` | `GET /api/demo/compare` |
+|--------------------------------|--------------------------|
+| Robinson index, `\|L−R\| / (0.5(L+R)) × 100` | **Zifchock symmetry angle**, bounded ±50%, signed toward the larger leg |
+| `threshold_percent`, `exceeds_threshold` | **No threshold and no verdict** |
+| Picks sessions itself from `patient_id` + `task_type` | Both session ids are given explicitly |
+
+The index changed because the limb-symmetry framing assumes a sound reference limb, which unilateral
+injury work supplies and a bilaterally declining population does not. The symmetry angle needs no
+reference leg.
+
+**What the page adds on top of the endpoint.** The comparison response carries metrics only. The
+angle series and the lifted skeleton already live in the stored sessions, so `/compare` reads them
+from `GET /api/demo/sessions/{session_id}` — the same endpoint the analysis page reopens a session
+with, so a stored result has one shape and not two. Two consequences worth knowing:
+
+- **The graph shares an axis, not a clock.** Two lines, one per leg, each from its own recording. The
+  axis runs to the longer of the two clips and the shorter one simply ends; 4 s into one clip is not
+  the same instant as 4 s into the other. Normalising both onto a common 0–100% time would look tidier
+  and would invent a frame-to-frame correspondence that never existed, so it is not done, and the
+  caveat is printed under the chart rather than left for the reader to infer.
+- **The 3D viewer shows one recording at a time**, behind a left/right selector. Overlaying the two
+  skeletons would render a difference between two cameras, two distances and two scales, and invite it
+  to be read as a difference between two legs — the exact error the two-clip design exists to avoid.
+  The comparison stays in the table, where it is measured rather than eyeballed.
+
+A pair that fails a blocking check gets neither: two pictures side by side are the by-eye comparison
+that the refusal exists to withhold.
+
+The threshold is absent because there is no evidence for one. Calling 10 percent abnormal requires
+knowing how far apart two recordings of the *same* leg land; without that test–retest figure a
+threshold cannot separate asymmetry from recording noise. That study is scheduled in
+`docs2/04-planning.md`; until it reports, this endpoint states the difference and stops.
+
+---
+
 ## 6. Patient record
 
 ### `PUT /api/v1/patients/{patient_id}`
@@ -370,6 +455,57 @@ but kept, so a clinician can see that three attempts were made. Choosing between
 is done by naming sessions explicitly in a comparison, rather than by the system guessing which take
 counts.
 
+### 8.1 What is built today — the file-backed store
+
+The SQLite layer above is P2. Shipping ahead of it is a **file store**, so results already survive a
+restart and a past session can be reopened. It is the same data in a simpler container, and P2 reads
+these rows in rather than replacing them.
+
+```
+data/sessions/
+    index.jsonl                            one summary row per session, append-only
+    PT-001/
+        20260807-142530-rtmpose-<uuid>/
+            assessment.json                the complete response
+            annotated.mp4                  optional — see KEEP_ANNOTATED_VIDEO; H.264
+            pose2d.json  pose3d.json       when the run produced them
+```
+
+The **directory is the record**; `index.jsonl` is a rebuildable summary of it, so listing a patient's
+history costs one file read. A session whose index row is lost is still reachable by id, because the
+folder is still there.
+
+Two differences from the target contract above, both deliberate and both temporary:
+
+- **The annotated video is kept**, which the target contract does not do. It is the patient's own
+  footage with a skeleton drawn over it, so `KEEP_ANNOTATED_VIDEO=false` turns it off and stores only
+  metrics and keypoints. Keep it on for our own clips; turn it off before real patient recordings.
+  It is written as **H.264/MP4** so the browser can play it inline; where no H.264 encoder is
+  available the writer falls back to OpenCV's `mp4v` (MPEG-4 Part 2) and logs a warning — those files
+  still open in a desktop player, but the demo page can only offer them as a download. Sessions
+  recorded before this change are `mp4v`; re-run the clip to get a playable render.
+- **Nothing expires.** `DEMO_RESULT_TTL_SECONDS=0` — the default — means a stored session is never
+  deleted. A positive value restores the old expiring behaviour, which is why `expires_at` is still on
+  the response and is simply `null` when nothing expires.
+
+**The uploaded clip is never stored, under any setting.** The working directory is deleted as soon as
+the analysis returns, and it takes the original upload with it.
+
+Endpoints, both browser-facing:
+
+| Endpoint | Returns |
+|----------|---------|
+| `GET /api/demo/sessions?patient_id=&limit=` | Summary rows, newest first. Omit `patient_id` for every patient |
+| `GET /api/demo/sessions/{session_id}` | One stored session, in the **same payload shape** a fresh analysis returns |
+| `GET /api/demo/compare?left=&right=` | Left against right across two of these sessions — see part 5.1 |
+
+The shared shape is the point: the interface renders a reopened session through the same code path as
+a new one, so there is no second view of a result that can quietly drift from the first.
+
+**Still not built:** the progress comparison. Symmetry now has its endpoint (part 5.1); comparing a
+session against an earlier baseline of the *same* leg does not, and that is the half of P4 that still
+needs the MCID verdict work.
+
 ---
 
 ## 9. What changes from the current implementation
@@ -382,11 +518,11 @@ counts.
 | Both-legs metrics | Side-prefixed keys (`left_knee_rom_deg`) | Nested under `metrics.left` / `metrics.right` |
 | Bad recordings | Flagged, metrics still returned | **Rejected**, no metrics returned |
 | Confidence | `0.5 × frames + 0.5 × confidence` | `0.40 × frames + 0.40 × confidence + 0.20 × tracking stability` |
-| Symmetry | Ratio 0 to 1, inside the analysis response | Percentage, from its own comparison endpoint |
+| Symmetry | Ratio 0 to 1, inside the analysis response | Percentage, from its own comparison endpoint. *Shipped as `/api/demo/compare` — see part 5.1. The in-response `symmetry_index_score` is still there and still wrongly scoped* |
 | Naming | `knee_rom_deg` | `estimated_knee_rom_deg` |
 | Trajectories | Computed then discarded | Returned in `trajectory` — *already shipped on the current response* |
 | Velocity, acceleration | Absent | In `metrics` |
-| History | None | SQLite, enabling symmetry and progress |
+| History | None | SQLite, enabling symmetry and progress. *A file-backed store ships today — see part 8.1* |
 | Calibration board | Primary scale source | Optional; bone length is primary |
 
 **The rejection guard is the one behaviour change a caller must handle.** Everything else is additive

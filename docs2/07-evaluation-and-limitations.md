@@ -42,6 +42,12 @@ document follows from that gap.
 - ❌ "Detects sarcopenia." The system measures movement; it does not diagnose.
 - ❌ "The 3D output is metrically accurate." Monocular depth is an estimate, currently unverified.
 - ❌ "Our thresholds identify abnormal movement." They are conventions, not derived from patient data.
+- ❌ "This left-right difference is asymmetry." The `/compare` page reports the difference between two
+  recordings, and a difference between two recordings is not the same thing as a difference between
+  two legs. **We have never measured what two recordings of the *same* leg disagree by**, so we cannot
+  say which part of a 15 percent gap is the patient and which part is the filming. This is why the
+  comparison ships with no threshold and no verdict, and why the repeatability study in
+  `docs2/04-planning.md` is the critical path for that feature rather than an optional extra.
 
 > **Rule of thumb for writing and presenting:** every claim about *what the software does* is safe.
 > Every claim about *how close to the truth the numbers are* is not, until a validation study exists.
@@ -274,9 +280,12 @@ Questions the team cannot answer alone. Grouped by what they would change.
 ### Symmetry and monitoring
 
 7. What left-right difference is actionable in an elderly patient? The 10 percent figure comes largely
-   from sports rehabilitation.
+   from sports rehabilitation, where one limb is injured and the other is a genuine reference. In
+   bilateral decline there is no sound reference limb, which is why the comparison reports a
+   reference-free symmetry angle rather than a limb symmetry index. **We cannot ask this question
+   properly until the repeatability study says how much of a gap is filming noise.**
 8. How many days may separate the left and right recordings before they no longer represent one
-   assessment? Our current assumption is 30.
+   assessment? Our current assumption is 30, and exceeding it warns rather than refuses.
 9. Does the +5 degree knee-ROM MCID apply to this population, or is it drawn from post-surgical
    patients?
 10. Should a patient's rejected recordings be visible in their history, or hidden?

@@ -19,15 +19,17 @@ for one person. Risk is the chance it takes longer than estimated or breaks some
 | Screening against task thresholds | ✅ Built |
 | Annotated skeleton video | ✅ Built |
 | 3D lifting and motion simulation with muscle overlay | ✅ Built, unreliable — see P3 |
-| Symmetry | ⚠️ Implemented but wrongly scoped — rebuilt in P4 |
+| Symmetry across two recordings, one clip per leg | ✅ Built — `/compare` page and `GET /api/demo/compare`, no threshold yet |
+| Symmetry inside a single clip (`symmetry_index_score`) | ⚠️ Still in the response and still wrongly scoped — superseded, remove in P4 |
 | ChArUco board calibration | ✅ Built, being demoted to optional |
 | Quality **rejection** | ❌ Flags only, does not reject |
 | Angle trajectory in the response, and the graph in the interface | ✅ Built |
-| Bone-length scale, velocity, storage, comparisons | ❌ Not built |
+| Storing results and reopening a past session | ✅ Built — file store, ahead of the SQLite layer |
+| Bone-length scale, velocity, comparisons between sessions | ❌ Not built |
 
-**The honest summary:** the measurement core works. What is missing is the safety guard, the
-patient-specific scaling that makes 3D trustworthy, and everything that needs memory between
-recordings.
+**The honest summary:** the measurement core works, and results are now kept rather than discarded.
+What is missing is the safety guard, the patient-specific scaling that makes 3D trustworthy, and the
+layer that *compares* two stored recordings — storing them was the prerequisite, not the answer.
 
 ---
 
@@ -100,9 +102,17 @@ The architectural centre of the plan. Replaces the printed board with a number t
 gives the application memory.
 
 - [ ] **SQLite storage layer** — 3 d · medium · foundation for patient records and all history
+      *Partly delivered ahead of schedule as a **file-backed store** (`services/session_store.py`), because
+      a proof-of-concept demo needed results to survive a restart. Analyses are written to
+      `data/sessions/<patient_id>/<timestamp>-<session_id>/` and summarised one row per session in an
+      append-only `index.jsonl`; `GET /api/demo/sessions` lists them and `GET /api/demo/sessions/{id}`
+      reopens one in the shape a fresh analysis returns. The remaining SQLite work is the index layer over
+      these rows, not a rewrite of them. See [03-api-contract.md](03-api-contract.md) part 8.1.*
 - [ ] **Patient record endpoints, with bone lengths per side** — 2 d · low · where the scale reference lives
 - [ ] **Bone-length metric scale** — 2 d · medium · removes printing, calibration clips, and resolution matching
-- [ ] **Store every completed and rejected session** — 1 d · low · required by every comparison
+- [x] **Store every completed session** — 1 d · low · required by every comparison
+      *Every completed analysis is stored and kept. Rejected sessions cannot be stored yet because the
+      rejection guard itself is P0 work and does not exist.*
 - [ ] **Demote the ChArUco board to optional** — 1 d · low · keeps floor and 6DoF; removes it from the scale path
 - [ ] **Bone-length entry in the interface** — 1 d · low · one form, filled once per patient
 
@@ -131,11 +141,29 @@ it must be optional — if no still segment is found, skip the correction and wa
 
 Delivers the monitoring layer, and puts symmetry back on a correct footing.
 
-- [ ] **Session lookup and listing** — 1 d · low · find the counterpart to compare against
-- [ ] **Symmetry comparison endpoint** — 2 d · low · left against right, as a percentage, across two recordings
+- [x] **Session lookup and listing** — find the counterpart to compare against
+- [x] **Symmetry comparison endpoint** — `GET /api/demo/compare`, left against right across two recordings
+- [x] **Comparability guard on the symmetry pair** — blocking checks refuse a mismatched pair outright
+- [x] **Symmetry view in the interface** — the `/compare` page: metric table, two-line angle graph, and the 3D viewer with a left/right selector
+- [ ] **Test–retest repeatability study** — 3 d + data collection · **high** · the blocker on every threshold below
+- [ ] **A defensible asymmetry threshold** — 1 d · low · trivial once the study reports, impossible before it
 - [ ] **Progress endpoint with MCID verdict** — 3 d · medium · answers whether a change is real or noise
-- [ ] **Comparability guard on both** — 1 d · medium · refuses mismatched recordings instead of reporting a number
-- [ ] **Comparison views in the interface** — 3 d · medium · where a clinician actually reads the answer
+- [ ] **Comparability guard on progress** — 1 d · medium · the same refusals, over two recordings of one leg
+- [ ] **Progress views in the interface** — 2 d · medium
+- [ ] **Record the camera setup per session** — 1 d · medium · subject bbox size, resolution, orientation in the index row
+- [ ] **Remove `symmetry_index_score` from the analysis response** — 0.5 d · low · superseded by the endpoint above
+
+**The repeatability study is the critical path, and it is the one item that cannot be shortened by
+working harder.** Until we know what two recordings of the *same* leg disagree by, no number of
+percent can be called abnormal — a 12 percent threshold over 15 percent recording noise flags
+everybody. Collecting it needs several people recorded two or three times per leg, so it should start
+in parallel with the code work rather than after it.
+
+**Camera setup is the known hole in the comparability guard.** Nothing stored today says where the
+camera sat, so the guard cannot check that two clips were filmed the same way; it says so in a
+standing warning instead of implying a check it did not make. Recording the subject's bounding-box
+size per session is the cheap proxy — it moves with camera distance — and it must land before the
+repeatability data is collected, or that data inherits the same blind spot.
 
 ---
 
@@ -201,7 +229,8 @@ A phase is complete when all of the following hold.
 
 | Question | Who decides | Blocks |
 |----------|-------------|--------|
-| How many days may separate two sides of one symmetry comparison? Default is 30 | The clinician | P4 |
+| How many days may separate two sides of one symmetry comparison? Default is 30 (`ASYMMETRY_MAX_DAYS_APART`), and exceeding it warns rather than refuses, precisely because nobody has decided | The clinician | Nothing — the comparison ships without the answer |
+| What asymmetry counts as abnormal? Nothing is claimed today | The repeatability study first, then the clinician | The asymmetry threshold |
 | Are the per-task expected and borderline ROM values clinically right? | The clinician | Nothing now, but they drive every risk level |
 | Is the OpenSim export still wanted? | The advisor | Backlog |
 | Should rejected recordings be visible in patient history, or hidden? | The clinician | P2 |

@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Left vs right · RTMPose Movement Lab</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="shell">
+    <header class="topbar">
+      <div><p class="eyebrow">05 / ASYMMETRY</p><h1>Left vs right</h1></div>
+      <div class="topbar-actions">
+        <a class="ghost-button link-button" href="/">← Back to analysis</a>
+      </div>
+    </header>
+
+    <section class="panel">
+      <div class="panel-heading">
+        <div><p class="eyebrow">PICK TWO RECORDINGS</p><h2>One clip per leg</h2></div>
+        <span id="picker-state" class="step">—</span>
+      </div>
+      <p class="calibrate-intro">Asymmetry is read across two recordings, not inside one: each clip contributes only the leg it was <em>instructed</em> to move, filmed with that leg facing the camera. Choose the left-leg recording on the left and the right-leg recording on the right.</p>
+      <div class="picker-controls">
+        <label>Patient ID<input id="patient-input" value="PT-001" placeholder="leave empty for every patient"></label>
+        <button id="picker-refresh" class="ghost-button" type="button">Refresh</button>
+      </div>
+      <div class="picker-grid">
+        <div class="picker-column">
+          <span class="metric-label">Left leg <small class="hint">recordings with side = left</small></span>
+          <div id="left-list" class="history-list picker-list"></div>
+        </div>
+        <div class="picker-column">
+          <span class="metric-label">Right leg <small class="hint">recordings with side = right</small></span>
+          <div id="right-list" class="history-list picker-list"></div>
+        </div>
+      </div>
+      <p id="picker-message" class="message" role="alert"></p>
+    </section>
+
+    <section id="comparison-section" class="panel metrics-panel" hidden>
+      <div class="panel-heading">
+        <div><p class="eyebrow">COMPARISON</p><h2>Difference between the legs</h2></div>
+        <span id="comparison-state" class="step">—</span>
+      </div>
+      <p id="blocking-notice" class="inline-notice warn" hidden></p>
+      <div class="summary-grid">
+        <div><span class="metric-label">Movement</span><strong id="task-value">—</strong></div>
+        <div><span class="metric-label">Patient</span><strong id="patient-value">—</strong></div>
+        <div><span class="metric-label">Recorded apart</span><strong id="apart-value">—</strong></div>
+        <div><span class="metric-label">Analysis mode</span><strong id="mode-value">—</strong></div>
+      </div>
+      <div class="metric-compare" id="asymmetry-metrics"></div>
+
+      <div id="trajectory-block" class="trajectory-block" hidden>
+        <div class="trajectory-heading">
+          <span class="metric-label">Angle through time <small class="hint">(each leg from its own clip)</small></span>
+          <span id="trajectory-legend" class="trajectory-legend"></span>
+        </div>
+        <div id="trajectory-chart" class="trajectory-chart"></div>
+        <small id="trajectory-readout" class="hint">Hover the graph to read the angle at a moment.</small>
+        <small class="hint chart-caveat">The two lines come from two recordings, so they share an axis but not a clock: 4 s into one clip is not the same instant as 4 s into the other, and a shorter clip simply ends. Compare the shapes, not the alignment.</small>
+      </div>
+
+      <div id="checks-block" class="checks-block" hidden>
+        <span class="metric-label">Read this alongside the numbers</span>
+        <ul id="checks-list" class="checks-list"></ul>
+      </div>
+      <p class="disclaimer">No pass/fail verdict is given, and none is coming until we know how much two recordings of the <em>same</em> leg disagree by. Until that test-retest figure exists, a threshold cannot tell asymmetry apart from recording noise. The symmetry angle is Zifchock's, bounded at ±50%; positive means the left leg's value is larger.</p>
+    </section>
+
+    <section id="viewer-section" class="panel viewer-panel" hidden>
+      <div class="panel-heading"><div><p class="eyebrow">3D</p><h2>Lifted skeleton</h2></div><span id="viewer-state" class="step">—</span></div>
+      <div class="viewer-side-picker">
+        <span class="metric-label">Show leg</span>
+        <button id="viewer-side-left" class="ghost-button" type="button" data-side="left">Left recording</button>
+        <button id="viewer-side-right" class="ghost-button" type="button" data-side="right">Right recording</button>
+      </div>
+      <p id="viewer-warning" class="viewer-warning" hidden></p>
+      <div id="viewer-canvas" class="viewer-canvas"></div>
+      <div class="viewer-controls">
+        <button id="viewer-play" class="ghost-button" type="button">Play</button>
+        <button id="muscle-toggle" class="ghost-button" type="button" hidden>Muscles: off</button>
+        <input id="viewer-frame" type="range" min="0" max="0" value="0" step="1">
+        <span id="viewer-frame-label" class="metric-label">0 / 0</span>
+      </div>
+      <div id="muscle-legend" class="muscle-legend" hidden>
+        <span class="muscle-scale" aria-hidden="true"></span>
+        <span>Contracted → stretched — kinematic muscle-<em>length</em> proxy (geometry, not force). Quadriceps, hamstrings, gastrocnemius, iliopsoas, gluteals, per leg.</span>
+      </div>
+      <p class="disclaimer">One recording at a time, not the two overlaid. Each clip has its own camera, its own scale and its own timeline, so superimposing the skeletons would draw a difference between two setups and invite it to be read as a difference between two legs. Drag to rotate, scroll to zoom.</p>
+    </section>
+  </main>
+  <script type="importmap">
+    { "imports": { "three": "/static/vendor/three.module.min.js" } }
+  </script>
+  <script type="module" src="/static/compare.js"></script>
+</body>
+</html>

@@ -183,7 +183,9 @@ Everything in `.env`. Defaults are sensible; change them only with a reason.
 | `MOTIONBERT_MODEL_PATH` | *(empty)* | Where the 3D model file lives |
 | `FAKE_MODE` | `false` | Returns a fake result without running inference. For interface testing |
 | `DEMO_MAX_UPLOAD_MB` | `100` | Largest accepted upload |
-| `DEMO_RESULT_TTL_SECONDS` | `3600` | How long generated videos stay available |
+| `SESSION_DATA_DIR` | `data/sessions` | Where completed analyses are stored |
+| `DEMO_RESULT_TTL_SECONDS` | `0` | `0` keeps stored results forever. A positive value deletes a session that many seconds after it was analysed |
+| `KEEP_ANNOTATED_VIDEO` | `true` | Whether the skeleton-overlay video is stored with the result. Set to `false` before storing real patient recordings — the metrics and keypoints are kept either way. The uploaded clip is never stored |
 | `LOG_LEVEL` | `INFO` | `DEBUG` for much more detail |
 
 ---

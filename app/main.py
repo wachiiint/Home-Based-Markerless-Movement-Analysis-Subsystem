@@ -15,7 +15,13 @@ from app.core.logging import setup_logging
 from app.core.security import require_service_key
 from app.models.calibration import CharucoBoardSpec
 from app.schemas.movement import SideType, TaskType
-from app.schemas.response import DemoAssessmentResponse, HealthResponse, MovementAssessmentResponse
+from app.schemas.response import (
+    AsymmetryComparisonResponse,
+    DemoAssessmentResponse,
+    HealthResponse,
+    MovementAssessmentResponse,
+)
+from app.services.asymmetry_report import compare_sessions
 from app.services.calibration.charuco_calibrator import calibrate_device_from_images
 from app.services.calibration.device_id import derive_device_id
 from app.services.calibration.device_store import DeviceStore
@@ -25,6 +31,7 @@ from app.tools.calibrate_device import sample_video_frames
 from app.services.lifting.lifter import build_lifter
 from app.services.pose.pose_estimator import RtmlibAdapter
 from app.services.response_mapper import build_fake_response
+from app.services.session_store import SessionStore
 from app.services.video_analysis import VideoAnalysis, analyze_video
 from app.services.video_io import save_upload, validate_video_upload
 
@@ -61,7 +68,10 @@ async def lifespan(app: FastAPI):
     app.state.pose_estimator = None
     app.state.lifter = None
     app.state.device_store = None
-    app.state.demo_results = {}
+    # Completed analyses are kept on disk rather than in memory, so a result
+    # outlives the process that produced it.
+    app.state.session_store = SessionStore(Path(settings.session_data_dir))
+    app.state.session_store.purge_expired()
     if settings.fake_mode:
         logger.info("FAKE_MODE enabled; skipping pose model load")
     else:
@@ -106,11 +116,11 @@ app = FastAPI(title="RTMPose Movement Analysis Service", lifespan=lifespan)
 app.mount("/static", NoCacheStaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
 
-def _cleanup_demo_results() -> None:
-    now = datetime.now(timezone.utc)
-    expired = [session_id for session_id, item in app.state.demo_results.items() if item["expires_at"] <= now]
-    for session_id in expired:
-        shutil.rmtree(app.state.demo_results.pop(session_id)["directory"], ignore_errors=True)
+def _purge_expired_sessions() -> None:
+    """A no-op under the default settings, where stored sessions never expire."""
+    store: SessionStore | None = getattr(app.state, "session_store", None)
+    if store is not None:
+        store.purge_expired()
 
 
 async def _run_real_analysis(file: UploadFile, task_type: TaskType, view: str, side: str, subject_height_mm: float | None = None, want_pose_3d: bool = False, want_pose_2d: bool = False, device_make: str = "", device_model: str = "") -> tuple[VideoAnalysis, Path]:
@@ -215,6 +225,45 @@ async def calibrate_page():
     return FileResponse(Path(__file__).parent / "static" / "calibrate.html", headers=_NO_CACHE)
 
 
+@app.get("/compare", include_in_schema=False)
+async def compare_page():
+    """Left against right, from two stored recordings -- its own page because it
+    reads sessions that already exist rather than producing one."""
+    return FileResponse(Path(__file__).parent / "static" / "compare.html", headers=_NO_CACHE)
+
+
+def _demo_payload(record: dict, assessment: MovementAssessmentResponse | None = None) -> DemoAssessmentResponse:
+    """Build the browser's payload from one stored session.
+
+    A fresh analysis and a session reopened from history come through here
+    together, so a past result renders through exactly the same path as a new one
+    -- there is no second, quietly diverging view of a result.
+    """
+    session_id = record["session_id"]
+    if assessment is None:
+        directory = app.state.session_store.directory_of(record)
+        assessment = MovementAssessmentResponse.model_validate_json(
+            directory.joinpath("assessment.json").read_text(encoding="utf-8")
+        )
+    base = f"/api/demo/results/{session_id}"
+    has_2d = bool(record.get("has_pose_2d"))
+    has_3d = bool(record.get("has_pose_3d"))
+    return DemoAssessmentResponse(
+        assessment=assessment,
+        annotated_video_url=f"{base}/annotated.mp4" if record.get("has_annotated_video") else None,
+        assessment_url=f"{base}/assessment.json",
+        assessment_csv_url=f"{base}/assessment.csv",
+        trajectory_csv_url=f"{base}/trajectory.csv" if assessment.trajectory is not None else None,
+        pose_3d_url=f"{base}/pose3d.json" if has_3d else None,
+        pose_3d_csv_url=f"{base}/pose3d.csv" if has_3d else None,
+        pose_2d_url=f"{base}/pose2d.json" if has_2d else None,
+        pose_2d_csv_url=f"{base}/pose2d.csv" if has_2d else None,
+        expires_at=record.get("expires_at"),
+        patient_id=record.get("patient_id"),
+        recorded_at=record.get("recorded_at"),
+    )
+
+
 @app.post("/api/demo/assess", response_model=DemoAssessmentResponse, include_in_schema=False)
 async def demo_assess(
     patient_id: str = Form(...),
@@ -228,7 +277,7 @@ async def demo_assess(
     settings = app.state.settings
     if settings.fake_mode:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="set FAKE_MODE=false for the demo UI")
-    _cleanup_demo_results()
+    _purge_expired_sessions()
     normalized_view = view if view in {"frontal", "lateral"} else "frontal"
     try:
         analysis, output_path = await _run_real_analysis(
@@ -237,39 +286,26 @@ async def demo_assess(
         )
     except HTTPException:
         raise
+
     result = analysis.response
     result.video_metadata.task_type = task_type.value
-    expires_at = datetime.now(timezone.utc) + timedelta(seconds=settings.demo_result_ttl_seconds)
-    app.state.demo_results[result.session_id] = {"directory": output_path.parent, "expires_at": expires_at}
-
-    # Served as files next to annotated.mp4 so they share the same TTL cleanup.
-    # The CSV views are derived from these on request rather than written twice.
-    base = f"/api/demo/results/{result.session_id}"
-    directory = output_path.parent
-    directory.joinpath("assessment.json").write_text(result.model_dump_json(indent=2), encoding="utf-8")
-
-    pose_3d_url = None
-    if analysis.pose_3d is not None:
-        directory.joinpath("pose3d.json").write_text(json.dumps(analysis.pose_3d), encoding="utf-8")
-        pose_3d_url = f"{base}/pose3d.json"
-
-    pose_2d_url = None
-    if analysis.pose_2d is not None:
-        directory.joinpath("pose2d.json").write_text(json.dumps(analysis.pose_2d), encoding="utf-8")
-        pose_2d_url = f"{base}/pose2d.json"
-
-    return DemoAssessmentResponse(
-        assessment=result,
-        annotated_video_url=f"{base}/annotated.mp4",
-        assessment_url=f"{base}/assessment.json",
-        assessment_csv_url=f"{base}/assessment.csv",
-        trajectory_csv_url=f"{base}/trajectory.csv" if result.trajectory is not None else None,
-        pose_3d_url=pose_3d_url,
-        pose_3d_csv_url=f"{base}/pose3d.csv" if pose_3d_url else None,
-        pose_2d_url=pose_2d_url,
-        pose_2d_csv_url=f"{base}/pose2d.csv" if pose_2d_url else None,
-        expires_at=expires_at.isoformat(),
+    ttl = settings.demo_result_ttl_seconds
+    expires_at = (
+        (datetime.now(timezone.utc) + timedelta(seconds=ttl)).isoformat() if ttl > 0 else None
     )
+    record = app.state.session_store.save(
+        patient_id=patient_id,
+        assessment=result,
+        annotated_video=output_path,
+        pose_2d=analysis.pose_2d,
+        pose_3d=analysis.pose_3d,
+        keep_annotated_video=settings.keep_annotated_video,
+        expires_at=expires_at,
+    )
+    # The uploaded clip is never kept. Removing the working directory takes it,
+    # along with anything the store chose not to move out.
+    shutil.rmtree(output_path.parent, ignore_errors=True)
+    return _demo_payload(record, assessment=result)
 
 
 @app.post("/api/demo/calibrate", include_in_schema=False)
@@ -382,14 +418,65 @@ async def demo_devices() -> JSONResponse:
     return JSONResponse(content={"devices": devices})
 
 
+@app.get("/api/demo/sessions", include_in_schema=False)
+async def demo_sessions(patient_id: str = "", limit: int = 50) -> JSONResponse:
+    """Stored analyses, newest first, for the history list.
+
+    Summary rows only -- one row is what the list shows. Opening a session costs a
+    second request, which is the one that reads the full assessment off disk.
+    """
+    _purge_expired_sessions()
+    sessions = app.state.session_store.list(patient_id or None, limit)
+    return JSONResponse(content={"sessions": sessions})
+
+
+@app.get("/api/demo/sessions/{session_id}", response_model=DemoAssessmentResponse, include_in_schema=False)
+async def demo_session(session_id: str) -> DemoAssessmentResponse:
+    """Reopen one stored analysis, in the shape a fresh analysis returns."""
+    _purge_expired_sessions()
+    record = app.state.session_store.get(session_id)
+    if record is None or not app.state.session_store.directory_of(record).is_dir():
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="session not found")
+    return _demo_payload(record)
+
+
+@app.get("/api/demo/compare", response_model=AsymmetryComparisonResponse, include_in_schema=False)
+async def demo_compare(left: str = "", right: str = "") -> AsymmetryComparisonResponse:
+    """Compare two stored recordings, one leg each.
+
+    Both ids are required and must resolve to a stored session that named a side.
+    A pair that is stored but not comparable is **not** an error: it comes back
+    with ``comparable=false`` and the blocking checks that say why, because "these
+    two cannot be compared, and here is the reason" is the useful answer.
+    """
+    if not left or not right:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="left and right session ids are both required")
+    if left == right:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="a session cannot be compared against itself")
+    _purge_expired_sessions()
+    comparison = compare_sessions(
+        app.state.session_store,
+        left,
+        right,
+        max_days_apart=app.state.settings.asymmetry_max_days_apart,
+    )
+    if comparison is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="one of those sessions is missing, or was stored without a side",
+        )
+    return comparison
+
+
 def _demo_result_file(session_id: str, filename: str, missing_detail: str) -> Path:
-    """Locate one artifact of a live demo session, 404-ing on an expired session
-    and on an artifact that run never produced (e.g. no 3D when the lifter is off)."""
-    _cleanup_demo_results()
-    item = app.state.demo_results.get(session_id)
-    if not item:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="result expired or not found")
-    path = item["directory"] / filename
+    """Locate one artifact of a stored session, 404-ing on a session that is not
+    there and on an artifact that run never produced (e.g. no 3D when the lifter
+    is off, or no video when KEEP_ANNOTATED_VIDEO is false)."""
+    _purge_expired_sessions()
+    directory = app.state.session_store.resolve(session_id)
+    if directory is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="result not found")
+    path = directory / filename
     if not path.exists():
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=missing_detail)
     return path

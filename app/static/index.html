@@ -11,6 +11,7 @@
     <header class="topbar">
       <div><p class="eyebrow">LOCAL MOVEMENT ANALYSIS</p><h1>RTMPose Movement Lab</h1></div>
       <div class="topbar-actions">
+        <a class="ghost-button link-button" href="/compare">Left vs right →</a>
         <a class="ghost-button link-button" href="/calibrate">Calibrate camera →</a>
         <button id="preview-3d" class="ghost-button" type="button">Preview 3D (sample data)</button>
         <span class="status-dot"><i></i> Ready for test</span>
@@ -43,11 +44,23 @@
       <section class="panel result-panel">
         <div class="panel-heading"><div><p class="eyebrow">02 / RESULT</p><h2>Skeleton overlay</h2></div><span id="result-state" class="step">Waiting for video</span></div>
         <div id="empty-state" class="empty-state"><div class="empty-mark">✦</div><p>Upload a video to see the pose overlay and movement metrics here.</p></div>
-        <video id="result-video" class="result-video" controls playsinline preload="metadata" hidden>
-          <source type="video/mp4">
-        </video>
+        <video id="result-video" class="result-video" controls playsinline preload="metadata" hidden></video>
+        <p id="video-message" class="inline-notice warn" hidden></p>
         <a id="download-link" class="download-link" download hidden>Download annotated video <span>↓</span></a>
       </section>
+    </section>
+
+    <section id="history-section" class="panel history-panel">
+      <div class="panel-heading">
+        <div><p class="eyebrow">HISTORY</p><h2>Past sessions</h2></div>
+        <span id="history-state" class="step">—</span>
+      </div>
+      <div class="history-controls">
+        <label class="history-toggle"><input id="history-all" type="checkbox"> Show every patient</label>
+        <button id="history-refresh" class="ghost-button" type="button">Refresh</button>
+      </div>
+      <div id="history-list" class="history-list"></div>
+      <small class="hint">Results are stored on this machine and are not deleted. Select one to reload its full analysis below.</small>
     </section>
 
     <section id="metrics-section" class="panel metrics-panel" hidden>

@@ -221,6 +221,25 @@ def _screen_declared_leg(leg: LegAnalysis, task_type: TaskType, settings: Settin
     return risk, confidence, flags
 
 
+# Browsers play H.264 in MP4 and nothing else reliably. OpenCV's default `mp4v`
+# is MPEG-4 Part 2, which every current browser refuses -- the file downloads and
+# plays in a desktop player, but the demo page shows a dead <video>. So ask for
+# H.264 first (on Windows the Media Foundation backend supplies the encoder) and
+# only fall back to `mp4v` where no H.264 encoder exists, saying so in the log.
+_VIDEO_CODECS = ("avc1", "mp4v")
+
+
+def _open_video_writer(output_path: Path, fps: float, size: tuple[int, int]) -> cv2.VideoWriter:
+    for codec in _VIDEO_CODECS:
+        writer = cv2.VideoWriter(str(output_path), cv2.VideoWriter_fourcc(*codec), fps, size)
+        if writer.isOpened():
+            if codec != _VIDEO_CODECS[0]:
+                logger.warning("no H.264 encoder available; annotated video written as %s, which browsers cannot play inline", codec)
+            return writer
+        writer.release()
+    raise ValueError("unable to create annotated video")
+
+
 def _collect_pose_sequence(input_path: Path, output_path: Path, metadata: dict, settings: Settings, estimator: PoseEstimator, frame_observer=None) -> PoseSequence:
     """Pass 1: run 2D inference over sampled frames, write the annotated video,
     and collect the main-subject 2D pose per frame into a ``PoseSequence``.
@@ -229,10 +248,11 @@ def _collect_pose_sequence(input_path: Path, output_path: Path, metadata: dict, 
     annotation -- used by the session calibrator to detect the ChArUco board.
     """
     capture = cv2.VideoCapture(str(input_path))
-    writer = cv2.VideoWriter(str(output_path), cv2.VideoWriter_fourcc(*"mp4v"), settings.frame_sample_fps, (metadata["width"], metadata["height"]))
-    if not writer.isOpened():
+    try:
+        writer = _open_video_writer(output_path, settings.frame_sample_fps, (metadata["width"], metadata["height"]))
+    except ValueError:
         capture.release()
-        raise ValueError("unable to create annotated video")
+        raise
 
     sample_interval = max(1, round(metadata["fps"] / settings.frame_sample_fps))
     frames: list[FramePose2D] = []
