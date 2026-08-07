@@ -62,7 +62,7 @@ motion simulation.
   `compare.html`/`compare.js` is the `/compare` page, which picks two stored sessions and reads the
   difference between the legs. `anglechart.js` is the angle-through-time graph, shared by both pages;
   `viewer3d.js` is the 3D skeleton renderer, likewise.
-- `tests/` — 192 tests covering the API contract, kinematics, lifting, calibration, muscles, smoothness, symmetry, asymmetry, trajectory, exports, session storage.
+- `tests/` — 193 tests covering the API contract, kinematics, lifting, calibration, muscles, smoothness, symmetry, asymmetry, trajectory, exports, session storage.
 
 ---
 
