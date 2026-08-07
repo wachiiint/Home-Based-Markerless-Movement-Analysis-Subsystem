@@ -14,7 +14,7 @@ from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.core.security import require_service_key
 from app.models.calibration import CharucoBoardSpec
-from app.schemas.movement import SideType, TaskType
+from app.schemas.movement import SideType, TaskType, ViewType
 from app.schemas.response import (
     AsymmetryComparisonResponse,
     DemoAssessmentResponse,
@@ -116,6 +116,22 @@ app = FastAPI(title="RTMPose Movement Analysis Service", lifespan=lifespan)
 app.mount("/static", NoCacheStaticFiles(directory=Path(__file__).parent / "static"), name="static")
 
 
+def _normalize_view(view: str) -> str:
+    """Coerce the ``view`` form field onto ``ViewType``.
+
+    ``view`` is accepted as a plain string rather than declared as the enum on
+    purpose: an unrecognised value is metadata about how the clip was filmed, not
+    a reason to refuse the clip, so it is logged and falls back to frontal
+    instead of 422-ing the way ``task_type`` and ``side`` do. The enum is the one
+    definition of what the valid values are.
+    """
+    try:
+        return ViewType(view).value
+    except ValueError:
+        logger.warning("unknown view=%s; using %s", view, ViewType.FRONTAL.value)
+        return ViewType.FRONTAL.value
+
+
 def _purge_expired_sessions() -> None:
     """A no-op under the default settings, where stored sessions never expire."""
     store: SessionStore | None = getattr(app.state, "session_store", None)
@@ -186,9 +202,7 @@ async def assess_movement(
     device_model: str = Form(default=""),
 ) -> MovementAssessmentResponse:
     settings = app.state.settings
-    normalized_view = view if view in {"frontal", "lateral"} else "frontal"
-    if normalized_view != view:
-        logger.warning("unknown view=%s; using frontal", view)
+    normalized_view = _normalize_view(view)
 
     try:
         await validate_video_upload(file)
@@ -278,14 +292,11 @@ async def demo_assess(
     if settings.fake_mode:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="set FAKE_MODE=false for the demo UI")
     _purge_expired_sessions()
-    normalized_view = view if view in {"frontal", "lateral"} else "frontal"
-    try:
-        analysis, output_path = await _run_real_analysis(
-            file, task_type, normalized_view, side.value, want_pose_3d=True, want_pose_2d=True,
-            device_make=device_make, device_model=device_model,
-        )
-    except HTTPException:
-        raise
+    normalized_view = _normalize_view(view)
+    analysis, output_path = await _run_real_analysis(
+        file, task_type, normalized_view, side.value, want_pose_3d=True, want_pose_2d=True,
+        device_make=device_make, device_model=device_model,
+    )
 
     result = analysis.response
     result.video_metadata.task_type = task_type.value

@@ -156,3 +156,45 @@ def test_patient_id_cannot_escape_the_store_root(tmp_path):
     directory = store.directory_of(row)
     assert tmp_path in directory.parents
     assert ".." not in row["directory"]
+
+
+def test_a_row_with_no_usable_patient_id_does_not_break_the_patient_list(tmp_path):
+    """The index is append-only and outlives the build that wrote it, so a row
+    can carry a missing, null or non-string id. One of those must not take the
+    whole history list down."""
+    store = SessionStore(tmp_path)
+    store.save(patient_id="PT-001", assessment=_assessment())
+    store._index["orphan-null"] = {"session_id": "orphan-null", "patient_id": None}
+    store._index["orphan-missing"] = {"session_id": "orphan-missing"}
+    store._index["orphan-number"] = {"session_id": "orphan-number", "patient_id": 12345}
+
+    assert store.patients() == ["PT-001"]
+
+
+def test_purge_survives_an_expiry_stamp_it_did_not_write(tmp_path):
+    """Every demo endpoint purges before it answers, so a single unparseable or
+    timezone-less stamp would otherwise 500 the whole UI."""
+    store = SessionStore(tmp_path)
+    now = datetime(2026, 8, 7, 12, 0, tzinfo=timezone.utc)
+    naive = store.save(
+        patient_id="PT-001", assessment=_assessment(),
+        expires_at="2026-08-07T11:00:00",  # no timezone -- comparing this raises
+    )
+    unparseable = store.save(
+        patient_id="PT-001", assessment=_assessment(), expires_at="not a timestamp",
+    )
+
+    assert store.purge_expired(now) == 1
+    assert store.get(naive["session_id"]) is None
+    assert store.get(unparseable["session_id"]) is not None
+
+
+def test_annotations_are_readable():
+    """``SessionStore.list`` shadows the builtin ``list`` inside the class body,
+    so a later ``-> list[str]`` annotation resolves to the method and raises.
+    Python 3.14 defers annotations and hides it; 3.13 and earlier evaluate them
+    eagerly and fail at import. Reading them here catches it on both."""
+    for name in vars(SessionStore):
+        attribute = getattr(SessionStore, name)
+        if callable(attribute):
+            attribute.__annotations__  # must not raise

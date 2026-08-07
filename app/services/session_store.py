@@ -28,6 +28,8 @@ between sessions: this stores, it does not judge. Progress and symmetry verdicts
 are P4's separate query endpoints, over exactly these rows.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import re
@@ -170,7 +172,14 @@ class SessionStore:
         return rows[:limit] if limit > 0 else rows
 
     def patients(self) -> list[str]:
-        return sorted({row.get("patient_id", "") for row in self._index.values()} - {""})
+        """Every patient named in the store, sorted.
+
+        A row is skipped rather than trusted: the index is append-only and rows
+        written by an older build (or hand-edited) can carry a missing, null or
+        non-string id, and one of those must not take the history list down.
+        """
+        names = {row.get("patient_id") for row in self._index.values()}
+        return sorted(name for name in names if isinstance(name, str) and name)
 
     # -- writing ----------------------------------------------------------
 
@@ -232,6 +241,8 @@ class SessionStore:
         """Delete sessions whose TTL has passed. A row with ``expires_at`` of
         ``None`` -- the default while this is a proof of concept -- never expires."""
         now = now or datetime.now(timezone.utc)
+        if now.tzinfo is None:
+            now = now.replace(tzinfo=timezone.utc)
         expired = []
         for session_id, row in self._index.items():
             expires_at = row.get("expires_at")
@@ -239,8 +250,13 @@ class SessionStore:
                 continue
             try:
                 deadline = datetime.fromisoformat(expires_at)
-            except ValueError:
+            except (TypeError, ValueError):
                 continue
+            if deadline.tzinfo is None:
+                # We always write an aware timestamp, but a row from another
+                # writer may be naive, and comparing the two raises. UTC is the
+                # only reading consistent with what this store produces.
+                deadline = deadline.replace(tzinfo=timezone.utc)
             if deadline <= now:
                 expired.append(session_id)
         if not expired:
