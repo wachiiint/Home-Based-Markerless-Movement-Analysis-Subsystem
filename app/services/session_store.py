@@ -171,7 +171,6 @@ class SessionStore:
         rows.sort(key=lambda row: row.get("recorded_at") or "", reverse=True)
         return rows[:limit] if limit > 0 else rows
 
-<<<<<<< HEAD
     def patients(self) -> list[str]:
         """Every patient named in the store, sorted.
 
@@ -181,10 +180,6 @@ class SessionStore:
         """
         names = {row.get("patient_id") for row in self._index.values()}
         return sorted(name for name in names if isinstance(name, str) and name)
-=======
-    def patients(self) -> "list[str]":
-        return sorted({row.get("patient_id", "") for row in self._index.values()} - {""})
->>>>>>> 268305e (Merge friend's work with scope-update docs; fix session_store import crash)
 
     # -- writing ----------------------------------------------------------
 
