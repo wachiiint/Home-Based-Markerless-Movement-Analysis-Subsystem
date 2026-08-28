@@ -65,6 +65,7 @@ python export_motionbert_onnx.py `
 onnxsim motionbert_lite.onnx motionbert_lite_sim.onnx
 
 cd .. ## go to ./models
+mkdir -p ./target
 mv ./MotionBERT/motionbert_lite_sim.onnx ./target
 # Then you can safely remove models/MotionBert
 rm -rf MotionBert
