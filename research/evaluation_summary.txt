@@ -1,0 +1,17 @@
+============================================================
+             POSE2SIM BASELINE EVALUATION REPORT            
+============================================================
+TRC File:     Demo_SinglePerson_1-97_filt_butterworth.trc
+Frames:       96 frames at 60.0 Hz
+Units:        m
+
+1. BONE LENGTH STABILITY (Lower std dev = higher stability):
+  - Right Femur    : Mean = 0.4163 m | Std = 0.0103 m (CV: 2.47%)
+  - Right Tibia    : Mean = 0.4022 m | Std = 0.0188 m (CV: 4.68%)
+  - Left Femur     : Mean = 0.4124 m | Std = 0.0115 m (CV: 2.78%)
+  - Left Tibia     : Mean = 0.3769 m | Std = 0.0150 m (CV: 3.98%)
+
+2. JOINT ANGLES & RANGE OF MOTION (ROM):
+  - Right Knee Flexion  : Min = 116.1° | Max = 176.1° | ROM = 60.1°
+  - Left Knee Flexion   : Min = 126.5° | Max = 160.4° | ROM = 33.9°
+============================================================

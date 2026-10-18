@@ -14,3 +14,11 @@ models/target
 models/*.onnx
 models/*.onnx.data
 *.bin
+
+# IDE configuration
+.vscode/
+
+# Research demo data and generated run artifacts (regenerated via research/README.md)
+research/Demo_SinglePerson/
+research/**/*.gif
+
