@@ -68,6 +68,42 @@ def parse_trc(trc_path: Path) -> dict:
     }
 
 
+def parse_mot(mot_path: Path) -> dict:
+    """Parse an OpenSim MOT motion file containing joint kinematics."""
+    with open(mot_path, "r", encoding="utf-8") as f:
+        lines = [line.strip() for line in f if line.strip()]
+
+    header_end = 0
+    for i, line in enumerate(lines):
+        if line.lower() == "endheader":
+            header_end = i + 1
+            break
+
+    if header_end == 0 or header_end >= len(lines):
+        return {}
+
+    col_names = lines[header_end].split()
+    data_rows = []
+    for line in lines[header_end + 1 :]:
+        try:
+            parts = [float(p) for p in line.split() if p]
+            if len(parts) == len(col_names):
+                data_rows.append(parts)
+        except ValueError:
+            continue
+
+    if not data_rows:
+        return {}
+
+    data_arr = np.array(data_rows)
+    return {
+        "file_name": mot_path.name,
+        "num_frames": len(data_arr),
+        "channels": {name: data_arr[:, i] for i, name in enumerate(col_names)},
+    }
+
+
+
 def compute_distance(p1: np.ndarray, p2: np.ndarray) -> np.ndarray:
     """Euclidean distance between two 3D coordinate arrays of shape (N, 3)."""
     return np.linalg.norm(p1 - p2, axis=1)
@@ -168,7 +204,7 @@ def evaluate_trc(trc_path: Path) -> dict:
     return report
 
 
-def format_report(report: dict) -> str:
+def format_report(report: dict, mot_report: dict | None = None) -> str:
     """Format evaluation metrics into readable text."""
     lines = [
         "============================================================",
@@ -192,6 +228,14 @@ def format_report(report: dict) -> str:
             f"  - {joint.replace('_', ' ').title():<20}: Min = {stats['min_deg']:.1f}° | "
             f"Max = {stats['max_deg']:.1f}° | ROM = {stats['rom_deg']:.1f}°"
         )
+
+    if mot_report and mot_report.get("angles"):
+        lines.append(f"\n3. OPENSIM INVERSE KINEMATICS (IK) FROM {mot_report['mot_file']}:")
+        for joint, stats in mot_report["angles"].items():
+            lines.append(
+                f"  - {joint.replace('_', ' ').title():<20}: Min = {stats['min']:.1f}° | "
+                f"Max = {stats['max']:.1f}° | ROM = {stats['rom']:.1f}°"
+            )
 
     lines.append("============================================================\n")
     return "\n".join(lines)
@@ -218,13 +262,50 @@ def main():
     print(f"Evaluating 3D reconstruction from: {target_trc}\n")
 
     report = evaluate_trc(target_trc)
-    formatted = format_report(report)
+
+    # Check for OpenSim kinematics .mot file
+    mot_report = None
+    kinematics_dir = demo_dir / "kinematics"
+    if kinematics_dir.exists():
+        mot_files = list(kinematics_dir.glob("*.mot"))
+        if mot_files:
+            mot_data = parse_mot(mot_files[0])
+            if mot_data and "channels" in mot_data:
+                mot_report = {
+                    "mot_file": mot_files[0].name,
+                    "angles": {},
+                }
+                channels = mot_data["channels"]
+                key_joints = [
+                    ("right_knee_angle", ["knee_angle_r", "RKnee_flexion"]),
+                    ("left_knee_angle", ["knee_angle_l", "LKnee_flexion"]),
+                    ("right_hip_flexion", ["hip_flexion_r", "RHip_flexion"]),
+                    ("left_hip_flexion", ["hip_flexion_l", "LHip_flexion"]),
+                    ("right_ankle_angle", ["ankle_angle_r", "RAnkle_flexion"]),
+                    ("left_ankle_angle", ["ankle_angle_l", "LAnkle_flexion"]),
+                ]
+                for clean_name, candidates in key_joints:
+                    for ch in channels:
+                        if any(c.lower() in ch.lower() for c in candidates):
+                            arr = channels[ch]
+                            valid = arr[~np.isnan(arr)]
+                            if len(valid) > 0:
+                                mot_report["angles"][clean_name] = {
+                                    "min": float(np.min(valid)),
+                                    "max": float(np.max(valid)),
+                                    "rom": float(np.max(valid) - np.min(valid)),
+                                    "mean": float(np.mean(valid)),
+                                }
+                            break
+
+    formatted = format_report(report, mot_report)
     print(formatted)
 
     output_summary = RESEARCH_DIR / "evaluation_summary.txt"
     with open(output_summary, "w", encoding="utf-8") as f:
         f.write(formatted)
     print(f"Summary report written to {output_summary}")
+
 
 
 if __name__ == "__main__":

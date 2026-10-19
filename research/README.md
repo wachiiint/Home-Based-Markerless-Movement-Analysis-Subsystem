@@ -6,10 +6,13 @@ This directory contains an isolated environment to run, evaluate, and experiment
 
 ## 1. Environment Setup
 
-Install Pose2Sim:
+Install Pose2Sim (and optionally OpenSim for Stage 6):
 
 ```bash
 pip install pose2sim
+
+# Optional: Install OpenSim for Stage 6 (Scaling & Inverse Kinematics)
+# conda install -c opensim-org opensim  (or: pip install opensim)
 ```
 
 Copy the official Pose2Sim demo dataset (`Demo_SinglePerson`) into this directory:
@@ -22,7 +25,7 @@ python3 -c "import Pose2Sim, os, shutil; src = os.path.join(os.path.dirname(Pose
 
 ## 2. Running the Baseline
 
-Run the standard Pose2Sim pipeline (pose estimation, triangulation, and filtering):
+Run the standard Pose2Sim pipeline (calibration, pose estimation, synchronization, triangulation, filtering, and OpenSim kinematics):
 
 ```bash
 python3 research/run_baseline.py
@@ -31,6 +34,7 @@ python3 research/run_baseline.py
 Outputs will be saved inside `research/Demo_SinglePerson/`:
 - `pose-2d/`: 2D keypoint detections per camera
 - `pose-3d/`: 3D triangulated and filtered `.trc` marker trajectory files
+- `kinematics/`: OpenSim scaled `.osim` model and `.mot` joint angle kinematics (when opensim is installed)
 
 ---
 

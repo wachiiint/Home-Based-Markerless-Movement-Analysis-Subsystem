@@ -14,4 +14,12 @@ Units:        m
 2. JOINT ANGLES & RANGE OF MOTION (ROM):
   - Right Knee Flexion  : Min = 116.1° | Max = 176.1° | ROM = 60.1°
   - Left Knee Flexion   : Min = 126.5° | Max = 160.4° | ROM = 33.9°
+
+3. OPENSIM INVERSE KINEMATICS (IK) FROM Demo_SinglePerson_1-97_filt_butterworth_LSTM.mot:
+  - Right Knee Angle    : Min = 8.6° | Max = 70.6° | ROM = 62.0°
+  - Left Knee Angle     : Min = 30.2° | Max = 67.4° | ROM = 37.2°
+  - Right Hip Flexion   : Min = -1.5° | Max = 51.7° | ROM = 53.2°
+  - Left Hip Flexion    : Min = 8.8° | Max = 49.1° | ROM = 40.3°
+  - Right Ankle Angle   : Min = -15.4° | Max = 17.6° | ROM = 33.1°
+  - Left Ankle Angle    : Min = 0.3° | Max = 26.4° | ROM = 26.1°
 ============================================================

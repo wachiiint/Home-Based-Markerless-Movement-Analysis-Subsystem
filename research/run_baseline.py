@@ -98,9 +98,38 @@ def run_baseline(demo_dir: Path = DEFAULT_DEMO_DIR) -> dict:
         timing["filtering_sec"] = time.time() - t0
         print(f"Completed in {timing['filtering_sec']:.2f} s\n")
 
+        # Stage 6: OpenSim Marker Augmentation & Kinematics (Scaling and IK)
+        print("--- Stage 6: OpenSim Kinematics (Scaling & Inverse Kinematics) ---")
+        t0 = time.time()
+        try:
+            # Run marker augmentation if enabled in Config.toml
+            try:
+                Pose2Sim.markerAugmentation(config_filename)
+            except Exception:
+                pass
+
+            Pose2Sim.kinematics(config_filename)
+            timing["kinematics_sec"] = time.time() - t0
+            print(f"Completed in {timing['kinematics_sec']:.2f} s\n")
+            print(f"OpenSim outputs saved under {demo_dir / 'kinematics'}")
+        except ModuleNotFoundError as e:
+            if "opensim" in str(e).lower():
+                print("Notice: 'opensim' library is not yet installed in your Python environment.")
+                print("To run OpenSim scaling and inverse kinematics:")
+                print("  conda install -c opensim-org opensim  (or: pip install opensim)")
+                print("Alternatively, you can open the generated .trc file in the free OpenSim desktop GUI.\n")
+            else:
+                print(f"Kinematics error: {e}\n")
+            timing["kinematics_sec"] = 0.0
+        except Exception as e:
+            print(f"OpenSim kinematics notice: {e}\n")
+            timing["kinematics_sec"] = 0.0
+
         timing["total_sec"] = sum(timing.values())
         print(f"=== Baseline Execution Finished in {timing['total_sec']:.2f} s ===")
-        print(f"3D outputs saved under {demo_dir / 'pose-3d'}")
+        print(f"3D marker outputs: {demo_dir / 'pose-3d'}")
+        if (demo_dir / "kinematics").exists():
+            print(f"OpenSim outputs:   {demo_dir / 'kinematics'}")
 
         return timing
 
